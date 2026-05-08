@@ -55,6 +55,10 @@ The CLI and MCP server are Node entry points; do not import Electron APIs from t
 
   At packaging time the CLI bundle and the Electron app each ship their own ABI-correct copy, so this friction is dev-only. If a native module errors at startup with `NODE_MODULE_VERSION` mismatch, the wrong-ABI build is almost always the cause — flip and retry before debugging anything deeper.
 
+## Commits
+
+This repo uses [Conventional Commits](https://www.conventionalcommits.org/). Common types: `feat`, `fix`, `docs`, `refactor`, `chore`, `test`, `build`. Scope is optional but useful — sensible scopes here are `cli`, `domain`, `db`, `mcp`, `renderer`, `main`, `build`. Imperative-mood subject under ~70 chars; explain _why_ in the body when the diff doesn't make it obvious.
+
 ## Architectural rules from `design.md` worth restating
 
 - **One writer.** All mutations to `.writ/writ.db` go through `src/shared/domain/`. The Electron main process, the CLI, and the MCP server are all thin shims over that module. Don't add a second code path that mutates the DB.
