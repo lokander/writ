@@ -1,4 +1,4 @@
-import type { Column, ProjectInfo, Task, TaskUpdate } from "../../../shared/types";
+import type { Column, NewTask, ProjectInfo, Task, TaskUpdate } from "../../../shared/types";
 
 export class WritState {
   project = $state<ProjectInfo | null>(null);
@@ -26,11 +26,11 @@ export class WritState {
     }
   }
 
-  async addTask(title: string): Promise<Task | null> {
-    const trimmed = title.trim();
+  async createTask(input: NewTask): Promise<Task | null> {
+    const trimmed = input.title.trim();
     if (trimmed.length === 0) return null;
     try {
-      const task = await window.api.tasks.create({ title: trimmed });
+      const task = await window.api.tasks.create({ ...input, title: trimmed });
       this.tasks = [...this.tasks, task];
       return task;
     } catch (e) {

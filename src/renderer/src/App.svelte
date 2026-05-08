@@ -4,6 +4,7 @@
 
   import TaskEditModal from "./lib/TaskEditModal.svelte";
   import { writState } from "./lib/state.svelte";
+  import type { Task } from "../../shared/types";
 
   let newTaskTitle = $state("");
   let activeColumnId = $state<string | null>(null);
@@ -27,10 +28,34 @@
     if (!stillThere) activeColumnId = writState.columns[0]!.id;
   });
 
-  const tasksInActiveColumn = $derived(
+  const childrenByParent = $derived.by(() => {
+    const map: Record<string, Task[]> = {};
+    for (const t of writState.tasks) {
+      if (t.parentId === null) continue;
+      (map[t.parentId] ??= []).push(t);
+    }
+    return map;
+  });
+
+  const childCount = $derived.by(() => {
+    const counts: Record<string, number> = {};
+    for (const t of writState.tasks) {
+      if (t.parentId === null) continue;
+      counts[t.parentId] = (counts[t.parentId] ?? 0) + 1;
+    }
+    return counts;
+  });
+
+  const columnNameById = $derived.by(() => {
+    const m: Record<string, string> = {};
+    for (const c of writState.columns) m[c.id] = c.name;
+    return m;
+  });
+
+  const topLevelInActiveColumn = $derived(
     activeColumnId === null
       ? []
-      : writState.tasks.filter((t) => t.columnId === activeColumnId && t.parentId === null),
+      : writState.tasks.filter((t) => t.parentId === null && t.columnId === activeColumnId),
   );
 
   const tasksByColumn = $derived.by(() => {
@@ -48,7 +73,7 @@
 
   async function handleAdd(): Promise<void> {
     if (newTaskTitle.trim().length === 0) return;
-    const created = await writState.addTask(newTaskTitle);
+    const created = await writState.createTask({ title: newTaskTitle });
     if (created) {
       // Jump to whichever column the task landed in (Backlog by default), so
       // the user sees what they just typed.
@@ -122,22 +147,45 @@
     </div>
 
     <div class="flex flex-1 flex-col gap-2 overflow-y-auto p-4">
-      {#each tasksInActiveColumn as task (task.id)}
-        <button
-          type="button"
-          class="card flex flex-row items-baseline gap-3 bg-base-200 px-4 py-2 text-left text-sm hover:bg-base-300"
-          onclick={() => (editingTaskId = task.id)}
-        >
-          <span class="font-mono text-xs opacity-50">{task.id.slice(-6)}</span>
-          <span>{task.title}</span>
-        </button>
+      {#each topLevelInActiveColumn as task (task.id)}
+        {@render taskNode(task, null, 0)}
       {:else}
         <p class="text-sm italic opacity-40">No tasks here.</p>
       {/each}
     </div>
   {/if}
 
+  {#snippet taskNode(task: Task, parentColumnId: string | null, depth: number)}
+    {@const n = childCount[task.id] ?? 0}
+    {@const showColumnBadge =
+      depth > 0 && parentColumnId !== null && task.columnId !== parentColumnId}
+    <button
+      type="button"
+      class="card flex flex-row items-baseline gap-3 bg-base-200 px-4 py-2 text-left text-sm hover:bg-base-300"
+      style:margin-left="{depth * 1.5}rem"
+      onclick={() => (editingTaskId = task.id)}
+    >
+      <span class="font-mono text-xs opacity-50">{task.id.slice(-6)}</span>
+      <span class="flex-1">{task.title}</span>
+      {#if showColumnBadge}
+        <span class="badge badge-outline badge-sm">{columnNameById[task.columnId] ?? "?"}</span>
+      {/if}
+      {#if n > 0}
+        <span class="badge badge-sm" title="{n} subtask{n === 1 ? '' : 's'}">{n}</span>
+      {/if}
+    </button>
+    {#each childrenByParent[task.id] ?? [] as child (child.id)}
+      {@render taskNode(child, task.columnId, depth + 1)}
+    {/each}
+  {/snippet}
+
   {#if editingTask}
-    <TaskEditModal task={editingTask} onClose={() => (editingTaskId = null)} />
+    {#key editingTaskId}
+      <TaskEditModal
+        task={editingTask}
+        onClose={() => (editingTaskId = null)}
+        onSwitch={(id) => (editingTaskId = id)}
+      />
+    {/key}
   {/if}
 </main>
