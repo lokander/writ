@@ -23,6 +23,10 @@ npm run typecheck        # runs typecheck:node AND svelte-check; both must pass
 npm run typecheck:node   # tsc on main + preload (tsconfig.node.json)
 npm run svelte-check     # svelte-check on the renderer
 
+npm test                 # vitest run (one-shot)
+npm run test:watch       # vitest in watch mode
+npm run test:ui          # vitest browser UI
+
 npm run cli -- <args>    # run the CLI from the project root (uses tsx)
 bin/writ-dev <args>      # wrapper to run the CLI from any cwd (testing findProjectRoot)
 
@@ -48,7 +52,7 @@ Hook scope (which check fires for which path):
 | `src/renderer/**` (`.ts`, `.svelte`) | ✓        | ✓      |          | ✓            |
 | `*.{md,json,yml,css,html,...}`       | ✓        |        |          |              |
 
-No test runner is wired up yet — `shared/domain/` has been smoke-tested only. Vitest is the natural fit (it shares Vite); add `npm test` and start covering domain functions before the surface grows further.
+Tests use vitest. Test files live next to source as `*.test.ts` and are auto-discovered. The in-memory DB helper is `src/shared/test-utils.ts` (`makeTestDb()`) — wraps `openDatabase(":memory:")` with migrations and default columns seeded; use it instead of touching the filesystem. Tests run under Node, so they need the CLI ABI of `better-sqlite3` (`npm run sqlite:build-for-cli`) — same as the CLI/MCP. There is no save-on-test hook; run `npm test` (or keep `npm run test:watch` running in a terminal) yourself.
 
 ## TypeScript project layout
 
