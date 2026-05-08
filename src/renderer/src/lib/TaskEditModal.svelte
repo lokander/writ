@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { X, Trash, Plus } from "phosphor-svelte";
+  import { X, Trash, Plus, PencilSimple } from "phosphor-svelte";
 
   import type { Priority, Task } from "../../../shared/types";
   import { PRIORITY_NAMES } from "../../../shared/types";
@@ -12,6 +12,8 @@
   }
 
   const { task, onClose, onSwitch }: Props = $props();
+
+  let mode = $state<"view" | "edit">("view");
 
   let title = $state(task.title);
   let description = $state(task.description);
@@ -55,6 +57,10 @@
       .sort((a, b) => a.title.localeCompare(b.title)),
   );
 
+  const parentTask = $derived(
+    task.parentId === null ? null : (writState.tasks.find((t) => t.id === task.parentId) ?? null),
+  );
+
   const children = $derived(writState.tasks.filter((t) => t.parentId === task.id));
 
   const columnNameById = $derived.by(() => {
@@ -62,6 +68,20 @@
     for (const c of writState.columns) m[c.id] = c.name;
     return m;
   });
+
+  function enterEdit(): void {
+    // Sync form fields from the current task so a previous discarded edit
+    // doesn't bleed into the next one.
+    title = task.title;
+    description = task.description;
+    priority = task.priority;
+    parentId = task.parentId;
+    mode = "edit";
+  }
+
+  function cancelEdit(): void {
+    mode = "view";
+  }
 
   async function save(): Promise<void> {
     if (!canSave) return;
@@ -73,7 +93,7 @@
       parentId,
     });
     saving = false;
-    if (updated) onClose();
+    if (updated) mode = "view";
   }
 
   async function remove(): Promise<void> {
@@ -101,13 +121,16 @@
   }
 
   function onKeydown(event: KeyboardEvent): void {
-    if (event.key === "Escape") {
-      if (addingSubtask) {
-        cancelAddSubtask();
-        event.stopPropagation();
-      } else {
-        onClose();
-      }
+    if (event.key !== "Escape") return;
+    // Esc unwinds layered state: subtask form → edit mode → close modal.
+    if (addingSubtask) {
+      cancelAddSubtask();
+      event.stopPropagation();
+    } else if (mode === "edit") {
+      cancelEdit();
+      event.stopPropagation();
+    } else {
+      onClose();
     }
   }
 
@@ -128,50 +151,92 @@
   class="modal modal-open"
   role="dialog"
   aria-modal="true"
-  aria-labelledby="task-edit-title"
+  aria-labelledby="task-modal-title"
   tabindex="-1"
 >
   <button type="button" class="modal-backdrop" aria-label="Close" onclick={onClose}></button>
   <form class="modal-box w-[70vw] max-w-none" onsubmit={onSubmit}>
-    <div class="mb-4 flex items-baseline justify-between gap-3">
-      <h2 id="task-edit-title" class="text-lg font-semibold">Edit task</h2>
-      <span class="font-mono text-xs opacity-50">{task.id.slice(-6)}</span>
-      <button type="button" class="btn btn-ghost btn-sm" aria-label="Close" onclick={onClose}>
-        <X size={16} weight="bold" />
-      </button>
-    </div>
+    {#if mode === "view"}
+      <div class="mb-4 flex items-start justify-between gap-3">
+        <h2 id="task-modal-title" class="text-2xl font-semibold leading-tight">{task.title}</h2>
+        <div class="flex shrink-0 items-baseline gap-2">
+          <span class="font-mono text-xs opacity-50">{task.id.slice(-6)}</span>
+          <button type="button" class="btn btn-ghost btn-sm" aria-label="Close" onclick={onClose}>
+            <X size={16} weight="bold" />
+          </button>
+        </div>
+      </div>
 
-    <label class="form-control mb-3 w-full">
-      <span class="label label-text">Title</span>
-      <input type="text" class="input input-bordered w-full" bind:value={title} autofocus />
-    </label>
+      <div class="mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+        <span class="badge badge-outline">
+          {columnNameById[task.columnId] ?? "?"}
+        </span>
+        <span><span class="opacity-60">Priority:</span> {PRIORITY_NAMES[task.priority]}</span>
+        <span class="flex items-center gap-2">
+          <span class="opacity-60">Parent:</span>
+          {#if parentTask}
+            <button type="button" class="link link-hover" onclick={() => onSwitch(parentTask.id)}>
+              {parentTask.title}
+            </button>
+          {:else}
+            <span class="opacity-50 italic">(none)</span>
+          {/if}
+        </span>
+      </div>
 
-    <label class="form-control mb-3 w-full">
-      <span class="label label-text">Description</span>
-      <textarea class="textarea textarea-bordered w-full" rows="10" bind:value={description}
-      ></textarea>
-    </label>
+      <div class="mb-6">
+        <div class="label label-text mb-1 opacity-60">Description</div>
+        {#if task.description.trim().length > 0}
+          <div class="rounded-lg bg-base-200 px-4 py-3 text-sm whitespace-pre-wrap">
+            {task.description}
+          </div>
+        {:else}
+          <p class="text-sm italic opacity-40">No description.</p>
+        {/if}
+      </div>
+    {:else}
+      <div class="mb-4 flex items-baseline justify-between gap-3">
+        <h2 id="task-modal-title" class="text-lg font-semibold">Edit task</h2>
+        <div class="flex shrink-0 items-baseline gap-2">
+          <span class="font-mono text-xs opacity-50">{task.id.slice(-6)}</span>
+          <button type="button" class="btn btn-ghost btn-sm" aria-label="Close" onclick={onClose}>
+            <X size={16} weight="bold" />
+          </button>
+        </div>
+      </div>
 
-    <div class="mb-4 flex flex-wrap gap-4">
-      <label class="form-control w-full max-w-xs">
-        <span class="label label-text">Priority</span>
-        <select class="select select-bordered" bind:value={priority}>
-          {#each [0, 1, 2, 3] as p (p)}
-            <option value={p}>{PRIORITY_NAMES[p as Priority]}</option>
-          {/each}
-        </select>
+      <label class="form-control mb-3 w-full">
+        <span class="label label-text">Title</span>
+        <input type="text" class="input input-bordered w-full" bind:value={title} autofocus />
       </label>
 
-      <label class="form-control w-full max-w-md">
-        <span class="label label-text">Parent</span>
-        <select class="select select-bordered" bind:value={parentId}>
-          <option value={null}>(no parent)</option>
-          {#each parentOptions as p (p.id)}
-            <option value={p.id}>{p.title}</option>
-          {/each}
-        </select>
+      <label class="form-control mb-3 w-full">
+        <span class="label label-text">Description</span>
+        <textarea class="textarea textarea-bordered w-full" rows="10" bind:value={description}
+        ></textarea>
       </label>
-    </div>
+
+      <div class="mb-4 flex flex-wrap gap-4">
+        <label class="form-control w-full max-w-xs">
+          <span class="label label-text">Priority</span>
+          <select class="select select-bordered" bind:value={priority}>
+            {#each [0, 1, 2, 3] as p (p)}
+              <option value={p}>{PRIORITY_NAMES[p as Priority]}</option>
+            {/each}
+          </select>
+        </label>
+
+        <label class="form-control w-full max-w-md">
+          <span class="label label-text">Parent</span>
+          <select class="select select-bordered" bind:value={parentId}>
+            <option value={null}>(no parent)</option>
+            {#each parentOptions as p (p.id)}
+              <option value={p.id}>{p.title}</option>
+            {/each}
+          </select>
+        </label>
+      </div>
+    {/if}
 
     <div class="mb-4">
       <div class="mb-2 flex items-center justify-between">
@@ -242,8 +307,15 @@
         Delete
       </button>
       <div class="flex gap-2">
-        <button type="button" class="btn btn-ghost" onclick={onClose}>Cancel</button>
-        <button type="submit" class="btn btn-primary" disabled={!canSave}>Save</button>
+        {#if mode === "view"}
+          <button type="button" class="btn btn-primary" onclick={enterEdit}>
+            <PencilSimple size={16} weight="bold" />
+            Edit
+          </button>
+        {:else}
+          <button type="button" class="btn btn-ghost" onclick={cancelEdit}>Cancel</button>
+          <button type="submit" class="btn btn-primary" disabled={!canSave}>Save</button>
+        {/if}
       </div>
     </div>
   </form>
