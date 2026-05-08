@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-**writ is in active early development.** Shipped: the shared domain layer (`src/shared/{types,db,domain}`), the CLI (`writ init`, `writ task add | list | view | move | edit | rm`, plus bare `writ task <id>` as a `view` shortcut), and the stdio MCP server (`writ mcp`, `src/mcp/`) with seven task tools. The Electron renderer is still a placeholder; `src/main` and `src/renderer` carry only the minimum needed to keep `npm run dev` building.
+**writ is in active early development.** Shipped: the shared domain layer (`src/shared/{types,db,domain}`), the CLI (`writ init`, `writ task add | list | view | move | edit | rm`, plus bare `writ task <id>` as a `view` shortcut), the stdio MCP server (`writ mcp`, `src/mcp/`) with seven task tools, and the first renderer slice — list view with column tabs and task creation, IPC handlers in main, typed `window.api` in preload (writ task `MJM`, slice 1; slice 2 covers edit/delete/move/details panel and is still pending).
 
 `.mcp.json` at the repo root registers writ's own MCP server (`./bin/writ-dev mcp`), so a Claude Code session opened in this repo gets `mcp__writ__*` tools alongside its in-session task tools. The user tracks ongoing work in writ via these tools — when proposing new tasks, add them to writ via `mcp__writ__create_task`, _not_ to the in-session task list, and don't start work on them until the user gives the go-ahead.
 
@@ -53,7 +53,7 @@ Hook scope (which check fires for which path):
 | `src/renderer/**` (`.ts`, `.svelte`) | ✓        | ✓      |          | ✓            |
 | `*.{md,json,yml,css,html,...}`       | ✓        |        |          |              |
 
-Tests use vitest. Test files live next to source as `*.test.ts` and are auto-discovered. The in-memory DB helper is `src/shared/test-utils.ts` (`makeTestDb()`) — wraps `openDatabase(":memory:")` with migrations and default columns seeded; use it instead of touching the filesystem. Tests run under Node, so they need the CLI ABI of `better-sqlite3` (`npm run sqlite:build-for-cli`) — same as the CLI/MCP. There is no save-on-test hook; run `npm test` (or keep `npm run test:watch` running in a terminal) yourself.
+Tests use vitest. Test files live next to source as `*.test.ts` and are auto-discovered. The in-memory DB helper is `src/shared/test-utils.ts` (`makeTestDb()`) — wraps `openDatabase(":memory:")` with migrations and default columns seeded; use it instead of touching the filesystem. Tests run under Electron-as-Node (same as the CLI and MCP), so they share the app's better-sqlite3 ABI; no flip needed. There is no save-on-test hook; run `npm test` (or keep `npm run test:watch` running in a terminal) yourself.
 
 ## TypeScript project layout
 

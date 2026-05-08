@@ -2,7 +2,7 @@
 
 A local-first desktop TODO app, built to replace the scattered `TODO.md` files most projects accumulate. Tasks live with the code they describe, in a per-project SQLite database at `<repo>/.writ/writ.db`. An MCP server lets Claude Code and other agents read and update tasks in the same store the desktop UI shows.
 
-> **Status:** pre-1.0, active development. The CLI and the MCP server are usable; the desktop app is a placeholder. See [`design.md`](./design.md) for the full architecture and [`CLAUDE.md`](./CLAUDE.md) for repo-specific guidance.
+> **Status:** pre-1.0, active development. The CLI, the MCP server, and a basic desktop UI (tabbed list view with task creation) are usable; richer in-app editing, kanban view, and packaging are still in progress. See [`design.md`](./design.md) for the full architecture and [`CLAUDE.md`](./CLAUDE.md) for repo-specific guidance.
 
 ## Quick start
 
@@ -20,7 +20,7 @@ Then, from any directory you want to track tasks in:
 ~/path/to/writ/bin/writ-dev task list
 ```
 
-`bin/writ-dev` is the in-tree dev wrapper that runs the CLI with `tsx`. The packaged `writ` binary is forthcoming.
+`bin/writ-dev` is the in-tree dev wrapper that runs the CLI through Electron-as-Node + `tsx`, so it shares the app's `better-sqlite3` ABI without per-context rebuilds. The packaged `writ` binary is forthcoming.
 
 ## CLI
 
@@ -139,9 +139,9 @@ src/
     db/           SQLite connection + versioned migrations
     domain/       Task CRUD; the only thing that mutates the DB
   cli/            Node CLI (writ init, task ...) — uses shared/domain
-  main/           Electron main process (placeholder for now)
+  main/           Electron main process: window mgmt, IPC handlers
   preload/        Electron preload bridge
-  renderer/       Svelte 5 UI (placeholder for now)
+  renderer/       Svelte 5 UI (Tailwind + DaisyUI abyss, Phosphor icons)
   mcp/            stdio MCP server — same shared/domain as the CLI
 ```
 
@@ -161,4 +161,4 @@ npm run build:mac         # dmg
 npm run build:win         # nsis installer
 ```
 
-Tests live next to source as `*.test.ts`. They run under Node, so they need the CLI ABI of `better-sqlite3` (`npm run sqlite:build-for-cli`) — same as the CLI/MCP. Run `npm test` once or `npm run test:watch` in a side terminal.
+Tests live next to source as `*.test.ts`. They run under Electron-as-Node (same as the CLI), so they share the app's `better-sqlite3` ABI — no per-context rebuilds. Run `npm test` once or `npm run test:watch` in a side terminal.
