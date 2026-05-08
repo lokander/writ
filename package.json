@@ -20,7 +20,7 @@
     "build": "npm run typecheck && electron-vite build",
     "postinstall": "electron-builder install-app-deps",
     "sqlite:build-for-cli": "npm rebuild better-sqlite3",
-    "sqlite:build-for-app": "electron-builder install-app-deps",
+    "sqlite:build-for-app": "electron-rebuild -f -w better-sqlite3",
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "npm run build && electron-builder --mac",
