@@ -6,10 +6,17 @@ import {
   listTasks,
   moveTask,
   resolveTaskId,
+  updateTask,
 } from "../../shared/domain/tasks";
+import {
+  parseTaskFile,
+  serializeTaskFile,
+  TaskFileParseError,
+} from "../../shared/domain/task-format";
 import { PRIORITY_NAMES, type Priority, type Task } from "../../shared/types";
 import type { Column } from "../../shared/types";
 import { handleCliError, resolveProjectDb } from "../context";
+import { cleanupTempFile, editInExternalEditor } from "../editor";
 
 const PRIORITY_INPUT: Record<string, Priority> = {
   u: 0,
@@ -170,6 +177,91 @@ export function taskCommand(): Command {
         deleteTask(db, task.id);
         console.log(`Deleted ${task.id.slice(-6)}  ${task.title}`);
       } catch (e) {
+        handleCliError(e);
+      } finally {
+        db.close();
+      }
+    });
+
+  cmd
+    .command("edit <id>")
+    .description("Open a task in $EDITOR (frontmatter + markdown body)")
+    .action((idInput: string) => {
+      const { db } = resolveProjectDb();
+      let tempPath: string | undefined;
+      try {
+        const task = resolveTaskId(db, idInput);
+        const columns = listColumns(db);
+        const colName = columns.find((c) => c.id === task.columnId)?.name ?? "";
+        const parentSuffix = task.parentId ? task.parentId.slice(-6) : undefined;
+
+        const initial = serializeTaskFile({ task, columnName: colName, parentSuffix });
+        const filename = `task-${task.id.slice(-6)}.md`;
+        const edited = editInExternalEditor(initial, filename);
+        tempPath = edited.tempPath;
+
+        if (edited.content === initial) {
+          console.log("No changes.");
+          cleanupTempFile(tempPath);
+          tempPath = undefined;
+          return;
+        }
+
+        const parsed = parseTaskFile(edited.content);
+        const update: {
+          title?: string;
+          description?: string;
+          priority?: Priority;
+          columnId?: string;
+          parentId?: string | null;
+        } = {};
+
+        if (parsed.title !== undefined && parsed.title !== task.title) {
+          update.title = parsed.title;
+        }
+        if (parsed.description !== task.description) {
+          update.description = parsed.description;
+        }
+        if (parsed.priority !== undefined && parsed.priority !== task.priority) {
+          update.priority = parsed.priority;
+        }
+        if (parsed.colName !== undefined) {
+          const col = getColumnByName(db, parsed.colName);
+          if (!col) {
+            throw new TaskFileParseError(
+              `col: '${parsed.colName}' not found. ${availableColumns(db)}`,
+            );
+          }
+          if (col.id !== task.columnId) update.columnId = col.id;
+        }
+        if (parsed.parentInput !== undefined) {
+          if (parsed.parentInput === null) {
+            if (task.parentId !== null) update.parentId = null;
+          } else {
+            const parent = resolveTaskId(db, parsed.parentInput);
+            if (parent.id === task.id) {
+              throw new TaskFileParseError("parent: a task cannot be its own parent");
+            }
+            if (parent.id !== task.parentId) update.parentId = parent.id;
+          }
+        }
+
+        if (Object.keys(update).length === 0) {
+          console.log("No changes.");
+        } else {
+          updateTask(db, task.id, update);
+          const summary = Object.keys(update).join(", ");
+          console.log(`Updated ${task.id.slice(-6)}  (${summary})`);
+        }
+
+        cleanupTempFile(tempPath);
+        tempPath = undefined;
+      } catch (e) {
+        if (e instanceof TaskFileParseError && tempPath) {
+          process.stderr.write(`${e.message}\n`);
+          process.stderr.write(`Your edits are preserved at: ${tempPath}\n`);
+          process.exit(1);
+        }
         handleCliError(e);
       } finally {
         db.close();
