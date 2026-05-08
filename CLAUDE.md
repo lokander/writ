@@ -10,6 +10,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **When work on a task in `Doing` looks finished, actively ask whether to finalize it before moving on.** Don't assume the user will remember to close it out — they often won't, especially after ad-hoc scope changes mid-implementation. Surface what shipped vs. the original task description, flag any scope that drifted into separate follow-ups, and ask: mark it Done, or is there more? Then either move it via `mcp__writ__move_task` to `Done` (and split out leftovers as new backlog tasks) or keep it in `Doing` per the user's call.
 
+**Commit before moving the task to `Done`, not after.** Keeps the git history aligned with the column transition — when you (or git blame) look back at the commit that closed the task, the diff matches what was finalized. Also forces a sanity check on the working tree: if there's nothing to commit when you go to finalize, slice 2 wasn't really done. Sequence: confirm finalization with the user → commit → `mcp__writ__move_task` to `Done`.
+
 **`design.md` at the repo root is the architectural source of truth.** Read it before making non-trivial changes. It defines: per-project SQLite at `<repo>/.writ/writ.db`, two binaries (a fast Node `writ` CLI plus the Electron app it can launch), a stdio MCP server (`writ mcp`) that writes SQLite directly with a best-effort liveness ping to a running desktop app, a shared domain layer that the CLI, MCP server, and Electron main process all import, and a phased build plan starting with scaffold cleanup and the data layer.
 
 If a change deviates from `design.md`, update `design.md` in the same change — don't let code and design drift.
