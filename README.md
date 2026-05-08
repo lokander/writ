@@ -148,15 +148,17 @@ src/
   main/           Electron main process (placeholder for now)
   preload/        Electron preload bridge
   renderer/       Svelte 5 UI (placeholder for now)
-  mcp/            MCP server — not yet implemented
+  mcp/            stdio MCP server — same shared/domain as the CLI
 ```
 
-The CLI, the (forthcoming) MCP server, and the Electron main process all import the same `shared/domain` module — there's only ever one writer of `.writ/writ.db`. See [`design.md`](./design.md) for the rationale.
+The CLI, the MCP server, and the Electron main process all import the same `shared/domain` module — there's only ever one writer of `.writ/writ.db`. See [`design.md`](./design.md) for the rationale.
 
 ## Development
 
 ```bash
 npm run dev               # launch Electron with HMR (after sqlite:build-for-app)
+npm test                  # vitest run (one-shot)
+npm run test:watch        # vitest in watch mode
 npm run typecheck         # tsc + svelte-check
 npm run lint              # eslint
 npm run format            # prettier across the repo
@@ -165,4 +167,4 @@ npm run build:mac         # dmg
 npm run build:win         # nsis installer
 ```
 
-A test runner is not yet wired up.
+Tests live next to source as `*.test.ts`. They run under Node, so they need the CLI ABI of `better-sqlite3` (`npm run sqlite:build-for-cli`) — same as the CLI/MCP. Run `npm test` once or `npm run test:watch` in a side terminal.
