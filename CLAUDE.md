@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-**writ is pre-implementation.** The current `src/` is the unmodified electron-vite + Svelte scaffold (Versions.svelte demo, `ping` IPC roundtrip, electron logo). Treat it as a deletion target, not a foundation.
+**writ is in active early development.** The shared domain layer (`src/shared/{types,db,domain}`) and the CLI (`writ init`, `writ task add | list | move | rm | edit`) are implemented and usable via `bin/writ-dev` or `npm run cli`. The MCP server and the Electron renderer are not yet built; `src/main` and `src/renderer` are minimal placeholders.
 
 **`design.md` at the repo root is the architectural source of truth.** Read it before making non-trivial changes. It defines: per-project SQLite at `<repo>/.writ/writ.db`, two binaries (a fast Node `writ` CLI plus the Electron app it can launch), a stdio MCP server (`writ mcp`) that writes SQLite directly with a best-effort liveness ping to a running desktop app, a shared domain layer that the CLI, MCP server, and Electron main process all import, and a phased build plan starting with scaffold cleanup and the data layer.
 
@@ -23,6 +23,12 @@ npm run typecheck        # runs typecheck:node AND svelte-check; both must pass
 npm run typecheck:node   # tsc on main + preload (tsconfig.node.json)
 npm run svelte-check     # svelte-check on the renderer
 
+npm run cli -- <args>    # run the CLI from the project root (uses tsx)
+bin/writ-dev <args>      # wrapper to run the CLI from any cwd (testing findProjectRoot)
+
+npm run sqlite:build-for-cli   # rebuild better-sqlite3 for current Node (CLI/MCP work)
+npm run sqlite:build-for-app   # rebuild better-sqlite3 for Electron (npm run dev)
+
 npm run build            # typecheck then electron-vite build (out/)
 npm run build:unpack     # build + electron-builder --dir (no installer)
 npm run build:linux      # AppImage + snap + deb
@@ -32,15 +38,24 @@ npm run build:win        # nsis installer
 
 **Don't run lint/format/typecheck manually after edits.** Hooks in `.claude/settings.json` run prettier, eslint, `typecheck:node`, and `svelte-check` automatically after every Edit/Write to a matching file, scoped by path. They block the next tool call (exit code 2) if checks fail, so you'll see the error inline. Use the scripts above only when you need to run them across the whole tree.
 
-There is no test runner configured yet. When adding the data layer, pick one (vitest is the natural fit alongside Vite) and wire `npm test` before writing tests against `shared/domain/`.
+Hook scope (which check fires for which path):
+
+| Path                                 | prettier | eslint | tsc:node | svelte-check |
+| ------------------------------------ | -------- | ------ | -------- | ------------ |
+| `src/main/**`, `src/preload/**`      | ✓        | ✓      | ✓        |              |
+| `src/shared/**`                      | ✓        | ✓      | ✓        | ✓            |
+| `src/cli/**`, `src/mcp/**`           | ✓        | ✓      | ✓        |              |
+| `src/renderer/**` (`.ts`, `.svelte`) | ✓        | ✓      |          | ✓            |
+| `*.{md,json,yml,css,html,...}`       | ✓        |        |          |              |
+
+No test runner is wired up yet — `shared/domain/` has been smoke-tested only. Vitest is the natural fit (it shares Vite); add `npm test` and start covering domain functions before the surface grows further.
 
 ## TypeScript project layout
 
 Three TS projects, root `tsconfig.json` references both children. **Where you put a file determines which config type-checks it.**
 
-- `tsconfig.node.json` — covers `src/main/**` and `src/preload/**`. Node/Electron runtime. Strict.
-- `tsconfig.web.json` — covers `src/renderer/src/**` (including `.svelte`). Browser/DOM lib. **`strict: false`**, `verbatimModuleSyntax: true`. Treat the looser strictness as a pragmatic choice for UI code, not license to write sloppy types in shared logic.
-- New top-level dirs from `design.md` (`src/shared/`, `src/cli/`, `src/mcp/`) are not yet covered by either config. Add them to `tsconfig.node.json`'s `include` (they all run under Node) when you create them.
+- `tsconfig.node.json` — covers `src/main/**`, `src/preload/**`, `src/shared/**`, `src/cli/**`, and `src/mcp/**`. Node/Electron runtime. Strict.
+- `tsconfig.web.json` — covers `src/renderer/src/**` (including `.svelte`) and `src/shared/types/**` so the renderer can import data types. Browser/DOM lib. **`strict: false`**, `verbatimModuleSyntax: true`. Never include `src/shared/db` or `src/shared/domain` here — they pull in `better-sqlite3`/`fs`. Treat the looser strictness as a pragmatic choice for UI code, not license to write sloppy types in shared logic.
 
 The CLI and MCP server are Node entry points; do not import Electron APIs from them. The shared domain library must be importable from all three contexts (renderer, main, CLI/MCP) — keep it framework-free.
 
@@ -56,6 +71,8 @@ The CLI and MCP server are Node entry points; do not import Electron APIs from t
   - For Electron dev (`npm run dev`): `npm run sqlite:build-for-app` (rebuilds for Electron)
 
   At packaging time the CLI bundle and the Electron app each ship their own ABI-correct copy, so this friction is dev-only. If a native module errors at startup with `NODE_MODULE_VERSION` mismatch, the wrong-ABI build is almost always the cause — flip and retry before debugging anything deeper.
+
+- **`task edit` editor resolution.** `$WRIT_EDITOR` → `$VISUAL` → `$EDITOR`; no fallback to `vi`, no peek at `git config core.editor`. For VS Code the `--wait` flag is critical — without it `code` returns immediately and the command thinks the user is done.
 
 ## Commits
 
