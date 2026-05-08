@@ -1,0 +1,36 @@
+{
+  "enabledPlugins": {
+    "claude-md-management@claude-plugins-official": true
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=$(jq -r '.tool_input.file_path // empty'); case \"$f\" in *.ts|*.svelte|*.js|*.mjs|*.cjs|*.json|*.yml|*.yaml|*.md|*.css|*.html) npx prettier --write \"$f\" >/dev/null 2>&1 ;; esac",
+            "statusMessage": "prettier"
+          },
+          {
+            "type": "command",
+            "command": "f=$(jq -r '.tool_input.file_path // empty'); case \"$f\" in *.ts|*.svelte|*.mjs) out=$(npx eslint --cache --fix \"$f\" 2>&1); status=$?; if [ $status -ne 0 ]; then echo \"$out\"; exit 2; fi ;; esac",
+            "statusMessage": "eslint"
+          },
+          {
+            "type": "command",
+            "command": "f=$(jq -r '.tool_input.file_path // empty'); case \"$f\" in */src/main/*|*/src/preload/*|*/src/shared/*|*/electron.vite.config.*) npm run typecheck:node 2>&1 || exit 2 ;; esac",
+            "asyncRewake": true,
+            "statusMessage": "tsc (node)"
+          },
+          {
+            "type": "command",
+            "command": "f=$(jq -r '.tool_input.file_path // empty'); case \"$f\" in *.svelte|*/src/renderer/*|*/src/shared/*) npm run svelte-check 2>&1 || exit 2 ;; esac",
+            "asyncRewake": true,
+            "statusMessage": "svelte-check"
+          }
+        ]
+      }
+    ]
+  }
+}
