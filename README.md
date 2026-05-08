@@ -8,8 +8,7 @@ A local-first desktop TODO app, built to replace the scattered `TODO.md` files m
 
 ```bash
 git clone <repo> && cd writ
-npm install
-npm run sqlite:build-for-cli   # see "Native modules" below
+npm install   # postinstall builds better-sqlite3 for Electron's ABI
 ```
 
 Then, from any directory you want to track tasks in:
@@ -127,14 +126,9 @@ Removing a frontmatter line means _keep the current value_, not "clear it". Sett
 
 ## Native modules
 
-writ uses `better-sqlite3`, a native module rebuilt against a specific Node ABI. The CLI runs under regular Node; the (forthcoming) Electron app runs under Electron's Node fork. The two ABIs are incompatible, so flip the build for whichever you're working on:
+writ uses `better-sqlite3`, a native module built for Electron's bundled Node ABI. The CLI, the MCP server, and the test suite all run under **Electron-as-Node** (`ELECTRON_RUN_AS_NODE=1 electron …`) so they share that ABI with the desktop app — one build covers everything; there are no per-context rebuild flips.
 
-```bash
-npm run sqlite:build-for-cli   # for CLI/MCP work
-npm run sqlite:build-for-app   # for Electron dev
-```
-
-If a native module errors with `NODE_MODULE_VERSION` mismatch on startup, the build is for the wrong runtime — flip it before debugging anything else.
+`npm install` builds it via the postinstall hook. If you ever see `NODE_MODULE_VERSION` mismatch (rare; usually after a corrupted install), `npm run sqlite:rebuild` forces a clean rebuild.
 
 ## Project layout
 
@@ -156,7 +150,7 @@ The CLI, the MCP server, and the Electron main process all import the same `shar
 ## Development
 
 ```bash
-npm run dev               # launch Electron with HMR (after sqlite:build-for-app)
+npm run dev               # launch Electron with HMR
 npm test                  # vitest run (one-shot)
 npm run test:watch        # vitest in watch mode
 npm run typecheck         # tsc + svelte-check

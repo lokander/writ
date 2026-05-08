@@ -29,11 +29,10 @@ npm test                 # vitest run (one-shot)
 npm run test:watch       # vitest in watch mode
 npm run test:ui          # vitest browser UI
 
-npm run cli -- <args>    # run the CLI from the project root (uses tsx)
-bin/writ-dev <args>      # wrapper to run the CLI from any cwd (testing findProjectRoot)
+npm run cli -- <args>    # run the CLI from the project root (Electron-as-Node + tsx)
+bin/writ-dev <args>      # same, runnable from any cwd (testing findProjectRoot)
 
-npm run sqlite:build-for-cli   # rebuild better-sqlite3 for current Node (CLI/MCP work)
-npm run sqlite:build-for-app   # rebuild better-sqlite3 for Electron (npm run dev)
+npm run sqlite:rebuild   # force-rebuild better-sqlite3 for Electron's ABI (rarely needed)
 
 npm run build            # typecheck then electron-vite build (out/)
 npm run build:unpack     # build + electron-builder --dir (no installer)
@@ -72,11 +71,7 @@ The CLI and MCP server are Node entry points; do not import Electron APIs from t
 - **`untrack` reads in state-class methods called from `$effect`.** Reactive reads inside a method leak as dependencies of any `$effect` that calls the method. A `dismiss()` that reads `this.dialog` will be re-run by an unrelated write to `dialog`, which can synchronously cancel work that just started. Symptom: "the promise resolved before the user could click anything." Wrap such reads in `untrack(() => ...)`.
 - **Renderer mounts via `mount()`** (not `new App({ target })`). See `src/renderer/src/main.ts`.
 - **Preload uses `contextBridge`** with context isolation on, sandbox off. Renderer talks to main via the typed `window.api` surface declared in `src/preload/index.d.ts` — extend that type when adding IPC channels rather than reaching for `(window as any)`. Anything passed to `invoke`/`send` must be structured-cloneable: no class instances, functions, Proxies, or DOM nodes.
-- **Electron 39, Node 22+.** `better-sqlite3` is a native module; the `postinstall` hook (`electron-builder install-app-deps`) rebuilds it against Electron's Node ABI. **Dual-ABI gotcha during dev:** the CLI runs under regular Node (via `tsx`), so a fresh `npm install` leaves better-sqlite3 in Electron-ABI mode and the CLI throws `NODE_MODULE_VERSION` on first use. Toggle as needed:
-  - For CLI/MCP work: `npm run sqlite:build-for-cli` (rebuilds for current Node)
-  - For Electron dev (`npm run dev`): `npm run sqlite:build-for-app` (rebuilds for Electron)
-
-  At packaging time the CLI bundle and the Electron app each ship their own ABI-correct copy, so this friction is dev-only. If a native module errors at startup with `NODE_MODULE_VERSION` mismatch, the wrong-ABI build is almost always the cause — flip and retry before debugging anything deeper.
+- **Electron 39, single ABI everywhere via Electron-as-Node.** `better-sqlite3` is a native module; the `postinstall` hook (`electron-builder install-app-deps`) rebuilds it for Electron's Node ABI, and that's the only ABI that ever matters because the CLI, MCP server, and tests **all run under `ELECTRON_RUN_AS_NODE=1 electron …`** — sharing Electron's bundled Node and its ABI. `bin/writ-dev`, `npm run cli`, `npm test`, and `npm run dev` are all Electron-as-Node entry points. There's no flip-flop and no per-context rebuild. If `NODE_MODULE_VERSION` mismatch ever does fire (e.g. after a botched install), `npm run sqlite:rebuild` forces a clean rebuild.
 
 - **`task edit` editor resolution.** `$WRIT_EDITOR` → `$VISUAL` → `$EDITOR`; no fallback to `vi`, no peek at `git config core.editor`. For VS Code the `--wait` flag is critical — without it `code` returns immediately and the command thinks the user is done.
 

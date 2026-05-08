@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
-# Dev wrapper so you can run the CLI from any cwd and exercise findProjectRoot.
+# Dev wrapper for the writ CLI. Runs under Electron-as-Node so the CLI
+# (and the MCP server, and tests) all share Electron's bundled Node and
+# its ABI — no more dual-ABI rebuild flips.
+#
 # Usage:
 #   ~/projects/writ/bin/writ-dev init
 #   ~/projects/writ/bin/writ-dev task add "buy milk"
 #
-# Production (post-packaging) will use a bundled `writ` binary on PATH; this
-# script is only for in-tree development.
+# Production (post-packaging) will ship `writ` as the Electron binary in
+# this exact node-mode for subcommands; this script is the dev mirror.
 set -euo pipefail
 
 repo="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-exec "$repo/node_modules/.bin/tsx" "$repo/src/cli/index.ts" "$@"
+electron="$repo/node_modules/.bin/electron"
+tsx="$repo/node_modules/tsx/dist/cli.mjs"
+
+ELECTRON_RUN_AS_NODE=1 exec "$electron" "$tsx" "$repo/src/cli/index.ts" "$@"
