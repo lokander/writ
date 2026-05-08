@@ -36,7 +36,7 @@ npm run build:mac        # dmg
 npm run build:win        # nsis installer
 ```
 
-**Don't run lint/format/typecheck manually after edits.** Hooks in `.claude/settings.json` run prettier, eslint, `typecheck:node`, and `svelte-check` automatically after every Edit/Write to a matching file, scoped by path. They block the next tool call (exit code 2) if checks fail, so you'll see the error inline. Use the scripts above only when you need to run them across the whole tree.
+**Don't run lint/format/typecheck manually after edits.** Hooks in `.claude/settings.json` run prettier, eslint, `typecheck:node`, and `svelte-check` automatically after every Edit/Write to a matching file, scoped by path. **Prettier and eslint block** on failure (exit 2) so style and lint issues get fixed immediately. **Typecheck and svelte-check warn but don't block** — failures print to stderr and you'll see them inline, but they don't halt the next tool call. This keeps multi-file refactors viable; just make sure tsc is clean before committing. Use the scripts above when you want to run them across the whole tree.
 
 Hook scope (which check fires for which path):
 

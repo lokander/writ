@@ -14,20 +14,20 @@
           },
           {
             "type": "command",
-            "command": "f=$(jq -r '.tool_input.file_path // empty'); case \"$f\" in *.ts|*.svelte|*.mjs) out=$(npx eslint --cache --fix \"$f\" 2>&1); status=$?; if [ $status -ne 0 ]; then echo \"$out\"; exit 2; fi ;; esac",
+            "command": "f=$(jq -r '.tool_input.file_path // empty'); case \"$f\" in *.ts|*.svelte|*.mjs) out=$(npx eslint --cache --fix \"$f\" 2>&1); status=$?; if [ $status -ne 0 ]; then echo \"$out\" >&2; exit 2; fi ;; esac",
             "statusMessage": "eslint"
           },
           {
             "type": "command",
-            "command": "f=$(jq -r '.tool_input.file_path // empty'); case \"$f\" in */src/main/*|*/src/preload/*|*/src/shared/*|*/src/cli/*|*/src/mcp/*|*/electron.vite.config.*) npm run typecheck:node 2>&1 || exit 2 ;; esac",
+            "command": "f=$(jq -r '.tool_input.file_path // empty'); case \"$f\" in */src/main/*|*/src/preload/*|*/src/shared/*|*/src/cli/*|*/src/mcp/*|*/electron.vite.config.*) out=$(npm run typecheck:node 2>&1); if [ $? -ne 0 ]; then echo \"$out\" >&2; fi ;; esac",
             "asyncRewake": true,
-            "statusMessage": "tsc (node)"
+            "statusMessage": "tsc (node, warn-only)"
           },
           {
             "type": "command",
-            "command": "f=$(jq -r '.tool_input.file_path // empty'); case \"$f\" in *.svelte|*/src/renderer/*|*/src/shared/*) npm run svelte-check 2>&1 || exit 2 ;; esac",
+            "command": "f=$(jq -r '.tool_input.file_path // empty'); case \"$f\" in *.svelte|*/src/renderer/*|*/src/shared/*) out=$(npm run svelte-check 2>&1); if [ $? -ne 0 ]; then echo \"$out\" >&2; fi ;; esac",
             "asyncRewake": true,
-            "statusMessage": "svelte-check"
+            "statusMessage": "svelte-check (warn-only)"
           }
         ]
       }
