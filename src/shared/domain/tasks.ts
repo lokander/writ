@@ -140,3 +140,50 @@ export function deleteTask(db: SqliteDb, id: string): boolean {
   const result = db.prepare(`DELETE FROM tasks WHERE id = ?`).run(id);
   return result.changes > 0;
 }
+
+export function moveTask(db: SqliteDb, id: string, columnId: string): Task | null {
+  // Append to the bottom of the new column.
+  const max = db
+    .prepare(`SELECT COALESCE(MAX(position), 0) AS m FROM tasks WHERE column_id = ?`)
+    .get(columnId) as { m: number };
+  return updateTask(db, id, { columnId, position: max.m + 1000 });
+}
+
+export class AmbiguousTaskError extends Error {
+  override readonly name = "AmbiguousTaskError";
+  constructor(
+    readonly input: string,
+    readonly matches: Task[],
+  ) {
+    super(`'${input}' matches ${matches.length} tasks`);
+  }
+}
+
+export class TaskNotFoundError extends Error {
+  override readonly name = "TaskNotFoundError";
+  constructor(readonly input: string) {
+    super(`No task matches '${input}'`);
+  }
+}
+
+// Resolve a user-supplied task identifier — full ulid or any unique suffix.
+// Suffix matching aligns with what `task list` displays (last 6 chars).
+export function resolveTaskId(db: SqliteDb, input: string): Task {
+  const trimmed = input.trim();
+  if (trimmed.length === 0) {
+    throw new TaskNotFoundError(input);
+  }
+
+  // Escape SQLite LIKE metacharacters. ulids never contain these, but a typo
+  // with %, _, or \ shouldn't trigger fuzzy matching.
+  const upper = trimmed.toUpperCase();
+  const escaped = upper.replace(/[\\%_]/g, "\\$&");
+
+  const rows = db
+    .prepare(`SELECT * FROM tasks WHERE id LIKE ? ESCAPE '\\'`)
+    .all(`%${escaped}`) as TaskRow[];
+
+  if (rows.length === 0) throw new TaskNotFoundError(input);
+  if (rows.length > 1) throw new AmbiguousTaskError(input, rows.map(fromRow));
+  return fromRow(rows[0]);
+}

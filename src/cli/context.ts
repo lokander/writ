@@ -1,5 +1,6 @@
 import { openDatabase, type SqliteDb } from "../shared/db";
 import { findProjectRoot, getDbPath } from "../shared/domain/project";
+import { AmbiguousTaskError, TaskNotFoundError } from "../shared/domain/tasks";
 
 export interface ResolvedProject {
   db: SqliteDb;
@@ -14,4 +15,23 @@ export function resolveProjectDb(cwd: string = process.cwd()): ResolvedProject {
   }
   const db = openDatabase(getDbPath(root));
   return { db, root };
+}
+
+export function handleCliError(error: unknown): never {
+  if (error instanceof AmbiguousTaskError) {
+    process.stderr.write(`${error.message}:\n`);
+    for (const m of error.matches.slice(0, 5)) {
+      process.stderr.write(`  ${m.id.slice(-10)}  ${m.title}\n`);
+    }
+    if (error.matches.length > 5) {
+      process.stderr.write(`  ... (${error.matches.length} total)\n`);
+    }
+  } else if (error instanceof TaskNotFoundError) {
+    process.stderr.write(`${error.message}\n`);
+  } else if (error instanceof Error) {
+    process.stderr.write(`${error.message}\n`);
+  } else {
+    process.stderr.write(`${String(error)}\n`);
+  }
+  process.exit(1);
 }
