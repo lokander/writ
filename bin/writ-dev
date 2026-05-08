@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Dev wrapper so you can run the CLI from any cwd and exercise findProjectRoot.
+# Usage:
+#   ~/projects/writ/bin/writ-dev init
+#   ~/projects/writ/bin/writ-dev task add "buy milk"
+#
+# Production (post-packaging) will use a bundled `writ` binary on PATH; this
+# script is only for in-tree development.
+set -euo pipefail
+
+repo="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+exec "$repo/node_modules/.bin/tsx" "$repo/src/cli/index.ts" "$@"

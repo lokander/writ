@@ -49,7 +49,11 @@ The CLI and MCP server are Node entry points; do not import Electron APIs from t
 - **`untrack` reads in state-class methods called from `$effect`.** Reactive reads inside a method leak as dependencies of any `$effect` that calls the method. A `dismiss()` that reads `this.dialog` will be re-run by an unrelated write to `dialog`, which can synchronously cancel work that just started. Symptom: "the promise resolved before the user could click anything." Wrap such reads in `untrack(() => ...)`.
 - **Renderer mounts via `mount()`** (not `new App({ target })`). See `src/renderer/src/main.ts`.
 - **Preload uses `contextBridge`** with context isolation on, sandbox off. Renderer talks to main via the typed `window.api` surface declared in `src/preload/index.d.ts` — extend that type when adding IPC channels rather than reaching for `(window as any)`. Anything passed to `invoke`/`send` must be structured-cloneable: no class instances, functions, Proxies, or DOM nodes.
-- **Electron 39, Node 22+.** `better-sqlite3` (not yet installed) will need `electron-builder install-app-deps` to rebuild against Electron's Node ABI; the `postinstall` hook already covers this. If a native module errors at startup with `NODE_MODULE_VERSION` mismatch, run `npm run postinstall` (or just `npm i`) before debugging anything else.
+- **Electron 39, Node 22+.** `better-sqlite3` is a native module; the `postinstall` hook (`electron-builder install-app-deps`) rebuilds it against Electron's Node ABI. **Dual-ABI gotcha during dev:** the CLI runs under regular Node (via `tsx`), so a fresh `npm install` leaves better-sqlite3 in Electron-ABI mode and the CLI throws `NODE_MODULE_VERSION` on first use. Toggle as needed:
+  - For CLI/MCP work: `npm run sqlite:build-for-cli` (rebuilds for current Node)
+  - For Electron dev (`npm run dev`): `npm run sqlite:build-for-app` (rebuilds for Electron)
+
+  At packaging time the CLI bundle and the Electron app each ship their own ABI-correct copy, so this friction is dev-only. If a native module errors at startup with `NODE_MODULE_VERSION` mismatch, the wrong-ABI build is almost always the cause — flip and retry before debugging anything deeper.
 
 ## Architectural rules from `design.md` worth restating
 
