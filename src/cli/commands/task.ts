@@ -61,6 +61,7 @@ interface ListOptions {
   tree?: boolean;
   tag?: string[];
   anyTag?: string[];
+  showDone?: boolean;
 }
 
 interface EditOptions {
@@ -155,6 +156,7 @@ export function taskCommand(): Command {
       "Filter to tasks tagged with any of these names. Repeatable; OR semantics.",
       collectString,
     )
+    .option("--show-done", "Include the Done column (hidden by default)")
     .action((opts: ListOptions) => {
       const { db } = resolveProjectDb();
       try {
@@ -169,8 +171,19 @@ export function taskCommand(): Command {
           return;
         }
 
+        // An explicit --col Done overrides the default hide. If the user asked
+        // for Done specifically, --show-done is implied.
+        const explicitlyAskingForDone = opts.col?.toLowerCase() === "done";
+        const includeDone = opts.showDone || explicitlyAskingForDone;
+        const doneColumnIds = new Set(
+          columns.filter((c) => c.name.toLowerCase() === "done").map((c) => c.id),
+        );
+
         if (opts.tree) {
-          renderTree(allTasks);
+          const treeTasks = includeDone
+            ? allTasks
+            : allTasks.filter((t) => !doneColumnIds.has(t.columnId));
+          renderTree(treeTasks);
           return;
         }
 
@@ -181,6 +194,8 @@ export function taskCommand(): Command {
             throw new Error(`Column '${opts.col}' not found. ${availableColumns(db)}`);
           }
           filteredColumns = [col];
+        } else if (!includeDone) {
+          filteredColumns = columns.filter((c) => !doneColumnIds.has(c.id));
         }
 
         // Default view: top-level only, grouped by column.
