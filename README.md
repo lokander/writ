@@ -29,6 +29,8 @@ Then, from any directory you want to track tasks in:
 writ init                       Create .writ/writ.db here
 writ task add <title> [flags]   Add a task: -p, -c, -d, --parent
 writ task list [flags]          List tasks: -c <col>, --tree
+writ task view <id>             Show full details (header + description + subtasks)
+writ task <id>                  Shortcut for `task view <id>`
 writ task move <id> <col>       Move to a different column (case-insensitive)
 writ task edit <id>             Open the task in $EDITOR
 writ task rm <id>               Delete a task; subtasks cascade

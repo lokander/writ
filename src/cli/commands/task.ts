@@ -53,8 +53,29 @@ interface ListOptions {
   tree?: boolean;
 }
 
+function viewTask(idInput: string): void {
+  const { db } = resolveProjectDb();
+  try {
+    const task = resolveTaskId(db, idInput);
+    const columns = listColumns(db);
+    const allTasks = listTasks(db);
+    process.stdout.write(renderTaskView(task, columns, allTasks) + "\n");
+  } catch (e) {
+    handleCliError(e);
+  } finally {
+    db.close();
+  }
+}
+
 export function taskCommand(): Command {
   const cmd = new Command("task").description("Manage tasks");
+
+  // Bare-arg shortcut: `writ task <id>` runs the same logic as `writ task view <id>`.
+  // If the arg is missing or matches a subcommand name, commander routes accordingly.
+  cmd.argument("[id]", "Task id (shortcut for `task view <id>`)").action((idArg?: string) => {
+    if (idArg) viewTask(idArg);
+    else cmd.help();
+  });
 
   cmd
     .command("add <title>")
@@ -182,6 +203,11 @@ export function taskCommand(): Command {
         db.close();
       }
     });
+
+  cmd
+    .command("view <id>")
+    .description("Show a task's full details (header + description + subtasks)")
+    .action((idInput: string) => viewTask(idInput));
 
   cmd
     .command("edit <id>")
@@ -320,4 +346,45 @@ function availableColumns(db: import("../../shared/db").SqliteDb): string {
     .map((c: Column) => c.name)
     .join(", ");
   return `Available: ${names}`;
+}
+
+function formatTimestamp(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 16).replace("T", " ") + " UTC";
+}
+
+export function renderTaskView(task: Task, columns: Column[], allTasks: Task[]): string {
+  const colName = columns.find((c) => c.id === task.columnId)?.name ?? "?";
+  const parentLabel = task.parentId ? task.parentId.slice(-6) : "—";
+  const subtasks = allTasks.filter((t) => t.parentId === task.id);
+  const pad = (s: string): string => s.padEnd(10);
+
+  const lines: string[] = [
+    `${pad("ID")} ${task.id}`,
+    `${pad("Title")} ${task.title}`,
+    `${pad("Column")} ${colName}`,
+    `${pad("Priority")} ${PRIORITY_NAMES[task.priority]}`,
+    `${pad("Parent")} ${parentLabel}`,
+    `${pad("Subtasks")} ${subtasks.length}`,
+    `${pad("Created")} ${formatTimestamp(task.createdAt)}`,
+    `${pad("Updated")} ${formatTimestamp(task.updatedAt)}`,
+    "",
+  ];
+
+  if (task.description.trim().length === 0) {
+    lines.push("  (no description)");
+  } else {
+    for (const line of task.description.split("\n")) {
+      lines.push("  " + line);
+    }
+  }
+
+  if (subtasks.length > 0) {
+    lines.push("");
+    lines.push(`Subtasks (${subtasks.length})`);
+    for (const sub of subtasks) {
+      lines.push(`  ${formatTaskLine(sub, 0)}`);
+    }
+  }
+
+  return lines.join("\n");
 }
