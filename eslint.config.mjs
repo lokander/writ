@@ -16,6 +16,15 @@ export default defineConfig(
     },
   },
   {
+    // Svelte 5 module-reactive files (.svelte.ts / .svelte.js). The Svelte
+    // plugin's recommended config doesn't pick these up automatically; tell
+    // eslint to parse them with the TS parser so imports and runes parse.
+    files: ["**/*.svelte.ts", "**/*.svelte.js"],
+    languageOptions: {
+      parser: tseslint.parser,
+    },
+  },
+  {
     files: ["**/*.{tsx,svelte}"],
     rules: {
       "svelte/no-unused-svelte-ignore": "off",
