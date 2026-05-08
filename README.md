@@ -1,8 +1,8 @@
 # writ
 
-A local-first desktop TODO app, built to replace the scattered `TODO.md` files most projects accumulate. Tasks live with the code they describe, in a per-project SQLite database at `<repo>/.writ/writ.db`. An MCP server (planned) lets Claude Code and other agents read and update tasks in the same store the desktop UI shows.
+A local-first desktop TODO app, built to replace the scattered `TODO.md` files most projects accumulate. Tasks live with the code they describe, in a per-project SQLite database at `<repo>/.writ/writ.db`. An MCP server lets Claude Code and other agents read and update tasks in the same store the desktop UI shows.
 
-> **Status:** pre-1.0, active development. The CLI is usable; the desktop app is a placeholder; the MCP server is not yet implemented. See [`design.md`](./design.md) for the full architecture and [`CLAUDE.md`](./CLAUDE.md) for repo-specific guidance.
+> **Status:** pre-1.0, active development. The CLI and the MCP server are usable; the desktop app is a placeholder. See [`design.md`](./design.md) for the full architecture and [`CLAUDE.md`](./CLAUDE.md) for repo-specific guidance.
 
 ## Quick start
 
@@ -32,9 +32,48 @@ writ task list [flags]          List tasks: -c <col>, --tree
 writ task move <id> <col>       Move to a different column (case-insensitive)
 writ task edit <id>             Open the task in $EDITOR
 writ task rm <id>               Delete a task; subtasks cascade
+writ mcp                        Run the stdio MCP server (for agents)
 ```
 
 Short IDs accept the full ulid or any unique suffix. `task list` shows the last 6 chars, so `task move ABCDEF Done` works.
+
+## MCP server
+
+`writ mcp` is a stdio-based [Model Context Protocol](https://modelcontextprotocol.io) server. Spawn it from any MCP-aware client (Claude Code, Cline, Zed, etc.) and the client can read and update tasks in whatever writ project the spawning process's `cwd` resolves to.
+
+### Tools
+
+| Tool           | What it does                                                             |
+| -------------- | ------------------------------------------------------------------------ |
+| `list_tasks`   | List tasks. `column`/`parent_id` filters. Body omitted (use `get_task`). |
+| `get_task`     | Single task with the full markdown description.                          |
+| `create_task`  | Create with title; optional description, column, priority, parent.       |
+| `update_task`  | Patch any field; omit fields to leave them unchanged.                    |
+| `move_task`    | Shortcut for changing only the column.                                   |
+| `delete_task`  | Delete a task; subtasks cascade.                                         |
+| `list_columns` | Columns in display order.                                                |
+
+IDs accept the full ulid or any unique suffix, same as the CLI.
+
+### Configure in Claude Code
+
+```jsonc
+// ~/.claude.json (user) or .mcp.json (per-project)
+{
+  "mcpServers": {
+    "writ": {
+      "command": "/absolute/path/to/writ/bin/writ-dev",
+      "args": ["mcp"],
+    },
+  },
+}
+```
+
+The MCP server inherits Claude Code's `cwd`, so it operates on whichever writ project lives at or above where you started Claude. If no `.writ/` is found, every tool returns a "no project" error pointing you at `writ init`.
+
+### Why stdio (and not HTTP)
+
+The desktop app is a _viewer/editor_, not a server. The MCP server writes SQLite directly so it works without the desktop app running — useful in CI, on remote shells, and in headless containers. When the desktop app is open, it'll pick up changes via `fs.watch` (and eventually a best-effort socket ping for instant refresh). See [`design.md`](./design.md) for the full reasoning.
 
 ## Editor
 
