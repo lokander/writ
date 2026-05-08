@@ -15,6 +15,8 @@ export interface Task {
   description: string;
   priority: Priority;
   position: number;
+  /** Tag names (sorted). Always populated by getTask / listTasks. */
+  tags: string[];
   createdAt: number;
   updatedAt: number;
 }
@@ -25,6 +27,8 @@ export interface NewTask {
   columnId?: string;
   parentId?: string | null;
   priority?: Priority;
+  /** Tag specs: `NAME` or `NAME=COLOR`. Tags are auto-created on first use. */
+  tags?: string[];
 }
 
 export interface TaskUpdate {
@@ -34,4 +38,6 @@ export interface TaskUpdate {
   parentId?: string | null;
   priority?: Priority;
   position?: number;
+  /** When provided, replaces the task's tag set. Tag specs: `NAME` or `NAME=COLOR`. */
+  tags?: string[];
 }

@@ -4,6 +4,7 @@
 
   import TaskEditModal from "./lib/TaskEditModal.svelte";
   import { writState } from "./lib/state.svelte";
+  import { indexTags, tagStyle } from "./lib/tag-color";
   import type { Task } from "../../shared/types";
 
   let newTaskTitle = $state("");
@@ -51,6 +52,8 @@
     for (const c of writState.columns) m[c.id] = c.name;
     return m;
   });
+
+  const colorByTag = $derived(indexTags(writState.tags));
 
   const topLevelInActiveColumn = $derived(
     activeColumnId === null
@@ -167,6 +170,12 @@
     >
       <span class="font-mono text-xs opacity-50">{task.id.slice(-6)}</span>
       <span class="flex-1">{task.title}</span>
+      {#each task.tags as tag (tag)}
+        {@const ts = tagStyle(tag, colorByTag[tag] ?? null)}
+        <span class="badge badge-sm {ts.className}" style:background-color={ts.inlineBg}>
+          {tag}
+        </span>
+      {/each}
       {#if showColumnBadge}
         <span class="badge badge-outline badge-sm">{columnNameById[task.columnId] ?? "?"}</span>
       {/if}

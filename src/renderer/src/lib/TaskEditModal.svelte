@@ -3,7 +3,13 @@
 
   import type { Priority, Task } from "../../../shared/types";
   import { PRIORITY_NAMES } from "../../../shared/types";
+  import {
+    parseTagSpec,
+    validateTagName,
+    TagValidationError,
+  } from "../../../shared/domain/tag-format";
   import { writState } from "./state.svelte";
+  import { indexTags, tagStyle } from "./tag-color";
 
   interface Props {
     task: Task;
@@ -19,16 +25,32 @@
   let description = $state(task.description);
   let priority = $state<Priority>(task.priority);
   let parentId = $state<string | null>(task.parentId);
+  // Each entry is a tag spec — `NAME` or `NAME=COLOR`. We display the parsed
+  // name in chips, and pass the raw spec list straight to setTaskTags on save
+  // so any `=COLOR` upserts go through.
+  let tagSpecs = $state<string[]>([...task.tags]);
+  let newTagName = $state("");
+  let useCustomColor = $state(false);
+  let newTagColor = $state("#888888");
+  let tagError = $state<string | null>(null);
   let saving = $state(false);
 
   let addingSubtask = $state(false);
   let newSubtaskTitle = $state("");
 
+  const tagsDirty = $derived.by(() => {
+    if (tagSpecs.length !== task.tags.length) return true;
+    const a = [...tagSpecs].sort();
+    const b = [...task.tags].sort();
+    return a.some((v, i) => v !== b[i]);
+  });
+
   const dirty = $derived(
     title !== task.title ||
       description !== task.description ||
       priority !== task.priority ||
-      parentId !== task.parentId,
+      parentId !== task.parentId ||
+      tagsDirty,
   );
 
   const canSave = $derived(dirty && title.trim().length > 0 && !saving);
@@ -69,18 +91,88 @@
     return m;
   });
 
+  const colorByTag = $derived(indexTags(writState.tags));
+
+  // Resolves the display color for a chip. Inline `=COLOR` overrides; else
+  // fall back to whatever's stored on the global tag (NULL → hash slot).
+  function chipStyle(spec: string): { className: string; inlineBg: string | null; name: string } {
+    try {
+      const parsed = parseTagSpec(spec);
+      const color = parsed.color ?? colorByTag[parsed.name] ?? null;
+      const ts = tagStyle(parsed.name, color);
+      return { ...ts, name: parsed.name };
+    } catch {
+      // Shouldn't happen — addTagFromInput validates before pushing.
+      return { className: "", inlineBg: null, name: spec };
+    }
+  }
+
+  // Live preview of what the chip would look like with the current
+  // name+color inputs, so the user sees the auto-color (or their picked
+  // color) before pressing Add.
+  const previewChip = $derived.by(() => {
+    const trimmed = newTagName.trim();
+    if (trimmed.length === 0) return null;
+    try {
+      const validName = validateTagName(trimmed);
+      const color = useCustomColor ? newTagColor : (colorByTag[validName] ?? null);
+      const ts = tagStyle(validName, color);
+      return { ...ts, name: validName };
+    } catch {
+      return null;
+    }
+  });
+
   function enterEdit(): void {
-    // Sync form fields from the current task so a previous discarded edit
-    // doesn't bleed into the next one.
     title = task.title;
     description = task.description;
     priority = task.priority;
     parentId = task.parentId;
+    tagSpecs = [...task.tags];
+    newTagName = "";
+    useCustomColor = false;
+    newTagColor = "#888888";
+    tagError = null;
     mode = "edit";
   }
 
   function cancelEdit(): void {
     mode = "view";
+  }
+
+  function addTag(): void {
+    const trimmed = newTagName.trim();
+    if (trimmed.length === 0) return;
+    let name: string;
+    try {
+      name = validateTagName(trimmed);
+    } catch (e) {
+      tagError = e instanceof TagValidationError ? e.message : String(e);
+      return;
+    }
+    const spec = useCustomColor ? `${name}=${newTagColor}` : name;
+    // Replace any existing entry that resolves to the same name so a
+    // follow-up Add with a color overwrites the older spec.
+    const existingIndex = tagSpecs.findIndex((s) => {
+      try {
+        return parseTagSpec(s).name === name;
+      } catch {
+        return false;
+      }
+    });
+    if (existingIndex >= 0) {
+      tagSpecs = [...tagSpecs.slice(0, existingIndex), spec, ...tagSpecs.slice(existingIndex + 1)];
+    } else {
+      tagSpecs = [...tagSpecs, spec];
+    }
+    newTagName = "";
+    useCustomColor = false;
+    newTagColor = "#888888";
+    tagError = null;
+  }
+
+  function removeTagAt(index: number): void {
+    tagSpecs = tagSpecs.filter((_, i) => i !== index);
   }
 
   async function save(): Promise<void> {
@@ -91,6 +183,7 @@
       description,
       priority,
       parentId,
+      tags: tagsDirty ? tagSpecs : undefined,
     });
     saving = false;
     if (updated) mode = "view";
@@ -143,6 +236,13 @@
     event.preventDefault();
     addSubtask();
   }
+
+  function onTagNameKeydown(event: KeyboardEvent): void {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      addTag();
+    }
+  }
 </script>
 
 <svelte:window onkeydown={onKeydown} />
@@ -182,6 +282,17 @@
             <span class="opacity-50 italic">(none)</span>
           {/if}
         </span>
+        {#if task.tags.length > 0}
+          <span class="flex flex-wrap items-center gap-1">
+            <span class="opacity-60">Tags:</span>
+            {#each task.tags as tag (tag)}
+              {@const ts = tagStyle(tag, colorByTag[tag] ?? null)}
+              <span class="badge badge-sm {ts.className}" style:background-color={ts.inlineBg}>
+                {tag}
+              </span>
+            {/each}
+          </span>
+        {/if}
       </div>
 
       <div class="mb-6">
@@ -236,6 +347,72 @@
           </select>
         </label>
       </div>
+
+      <div class="form-control mb-4 w-full">
+        <span class="label label-text">Tags</span>
+
+        {#if tagSpecs.length > 0}
+          <div class="mb-2 flex flex-wrap gap-1">
+            {#each tagSpecs as spec, i (spec + i)}
+              {@const cs = chipStyle(spec)}
+              <span class="badge badge-sm {cs.className}" style:background-color={cs.inlineBg}>
+                {cs.name}
+                <button
+                  type="button"
+                  class="ml-1 opacity-70 hover:opacity-100"
+                  aria-label="Remove tag"
+                  onclick={() => removeTagAt(i)}
+                >
+                  <X size={10} weight="bold" />
+                </button>
+              </span>
+            {/each}
+          </div>
+        {/if}
+
+        <div class="flex flex-wrap items-center gap-2">
+          <input
+            type="text"
+            class="input input-bordered input-sm flex-1 min-w-[10rem]"
+            placeholder="Tag name"
+            bind:value={newTagName}
+            onkeydown={onTagNameKeydown}
+          />
+          <label class="label cursor-pointer gap-2 px-2">
+            <input type="checkbox" class="checkbox checkbox-sm" bind:checked={useCustomColor} />
+            <span class="label-text text-sm">Custom color</span>
+          </label>
+          {#if useCustomColor}
+            <input
+              type="color"
+              class="h-8 w-12 cursor-pointer rounded border border-base-300 bg-base-200"
+              bind:value={newTagColor}
+            />
+          {/if}
+          {#if previewChip}
+            <span
+              class="badge badge-sm {previewChip.className}"
+              style:background-color={previewChip.inlineBg}
+              title="Preview"
+            >
+              {previewChip.name}
+            </span>
+          {/if}
+          <button
+            type="button"
+            class="btn btn-primary btn-sm"
+            onclick={addTag}
+            disabled={newTagName.trim().length === 0}
+          >
+            <Plus size={14} weight="bold" />
+            Add
+          </button>
+        </div>
+
+        {#if tagError}
+          <span class="label label-text text-error mt-1 text-xs">{tagError}</span>
+        {/if}
+      </div>
     {/if}
 
     <div class="mb-4">
@@ -260,6 +437,12 @@
             >
               <span class="font-mono text-xs opacity-50">{child.id.slice(-6)}</span>
               <span class="flex-1">{child.title}</span>
+              {#each child.tags as tag (tag)}
+                {@const ts = tagStyle(tag, colorByTag[tag] ?? null)}
+                <span class="badge badge-sm {ts.className}" style:background-color={ts.inlineBg}>
+                  {tag}
+                </span>
+              {/each}
               {#if showBadge}
                 <span class="badge badge-outline badge-sm">
                   {columnNameById[child.columnId] ?? "?"}

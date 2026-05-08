@@ -3,6 +3,7 @@ import { z } from "zod";
 import { openDatabase, type SqliteDb } from "../shared/db";
 import { getColumnByName, listColumns } from "../shared/domain/columns";
 import { findProjectRoot, getDbPath } from "../shared/domain/project";
+import { listTags } from "../shared/domain/tags";
 import {
   createTask,
   deleteTask,
@@ -71,6 +72,7 @@ interface TaskSummary {
   column: string;
   priority: string;
   parent_id: string | null;
+  tags: string[];
   subtasks: number;
   created_at: string;
   updated_at: string;
@@ -97,6 +99,7 @@ function presentSummary(task: Task, ctx: PresentationContext): TaskSummary {
     column: ctx.columnsById.get(task.columnId) ?? "?",
     priority: PRIORITY_NAMES[task.priority],
     parent_id: task.parentId,
+    tags: task.tags,
     subtasks: ctx.childCounts.get(task.id) ?? 0,
     created_at: new Date(task.createdAt).toISOString(),
     updated_at: new Date(task.updatedAt).toISOString(),
@@ -137,13 +140,27 @@ export function registerTools(server: McpServer): void {
           .describe(
             "Filter by parent: `null` for top-level tasks only, or a task id for that task's children. Omit for all tasks regardless of nesting.",
           ),
+        tag: z
+          .array(z.string())
+          .optional()
+          .describe(
+            "Filter to tasks tagged with ALL of these names (AND). Each entry is a tag name (no `=COLOR` suffix here — this is a filter, not an upsert).",
+          ),
+        any_tag: z
+          .array(z.string())
+          .optional()
+          .describe(
+            "Filter to tasks tagged with ANY of these names (OR). Combine with `tag` to AND across the union.",
+          ),
       },
     },
-    async ({ column, parent_id }) =>
+    async ({ column, parent_id, tag, any_tag }) =>
       withDb((db) => {
         const filter: ListFilter = {};
         if (column) filter.columnId = resolveColumnId(db, column);
         if (parent_id !== undefined) filter.parentId = parent_id;
+        if (tag !== undefined) filter.tags = tag;
+        if (any_tag !== undefined) filter.anyTags = any_tag;
         const ctx = buildContext(db);
         const tasks = listTasks(db, filter);
         return {
@@ -190,9 +207,15 @@ export function registerTools(server: McpServer): void {
           .string()
           .optional()
           .describe("Make this a subtask of the given task (full ulid or unique suffix)."),
+        tags: z
+          .array(z.string())
+          .optional()
+          .describe(
+            "Tag specs: `NAME` or `NAME=COLOR`. Tags are auto-created on first use; passing `=COLOR` upserts the color globally for that tag. Color accepts hex (`#rgb`/`#rrggbb`) or a CSS named color.",
+          ),
       },
     },
-    async ({ title, description, column, priority, parent_id }) =>
+    async ({ title, description, column, priority, parent_id, tags }) =>
       withDb((db) => {
         const columnId = column ? resolveColumnId(db, column) : undefined;
         const parentId = parent_id ? resolveTaskId(db, parent_id).id : undefined;
@@ -202,6 +225,7 @@ export function registerTools(server: McpServer): void {
           columnId,
           parentId,
           priority: priority ? PRIORITY_MAP[priority] : undefined,
+          tags,
         });
         return presentFull(created, buildContext(db));
       }),
@@ -224,9 +248,15 @@ export function registerTools(server: McpServer): void {
           .nullable()
           .optional()
           .describe("New parent task id, or null to make this a top-level task."),
+        tags: z
+          .array(z.string())
+          .optional()
+          .describe(
+            "Replace the task's tag set. Each entry is `NAME` or `NAME=COLOR` — the latter upserts that tag's color globally. Pass `[]` to clear all tags. Omit to leave tags unchanged.",
+          ),
       },
     },
-    async ({ id, title, description, column, priority, parent_id }) =>
+    async ({ id, title, description, column, priority, parent_id, tags }) =>
       withDb((db) => {
         const task = resolveTaskId(db, id);
         const update: Parameters<typeof updateTask>[2] = {};
@@ -243,6 +273,7 @@ export function registerTools(server: McpServer): void {
             update.parentId = parent.id;
           }
         }
+        if (tags !== undefined) update.tags = tags;
         const updated = updateTask(db, task.id, update);
         if (!updated) throw new Error(`Task ${task.id} disappeared during update.`);
         return presentFull(updated, buildContext(db));
@@ -298,6 +329,24 @@ export function registerTools(server: McpServer): void {
       withDb((db) => {
         const columns = listColumns(db);
         return { count: columns.length, columns: columns.map((c) => ({ id: c.id, name: c.name })) };
+      }),
+  );
+
+  server.registerTool(
+    "list_tags",
+    {
+      title: "List tags",
+      description:
+        "List all tags in the current project with their stored colors. NULL color means no explicit override — the renderer derives one from the tag name.",
+      inputSchema: {},
+    },
+    async () =>
+      withDb((db) => {
+        const tags = listTags(db);
+        return {
+          count: tags.length,
+          tags: tags.map((t) => ({ name: t.name, color: t.color })),
+        };
       }),
   );
 }

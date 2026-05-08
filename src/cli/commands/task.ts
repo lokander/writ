@@ -41,16 +41,30 @@ function parsePriority(input: string): Priority {
   return p;
 }
 
+// commander repeatable-option collector. Default is `undefined` so callers can
+// distinguish "user passed no --tag" from "user passed --tag ''" (which we
+// reject anyway via tag-format validation).
+function collectString(value: string, prev: string[] | undefined): string[] {
+  return prev ? [...prev, value] : [value];
+}
+
 interface AddOptions {
   priority?: Priority;
   col?: string;
   description?: string;
   parent?: string;
+  tag?: string[];
 }
 
 interface ListOptions {
   col?: string;
   tree?: boolean;
+  tag?: string[];
+  anyTag?: string[];
+}
+
+interface EditOptions {
+  tag?: string[];
 }
 
 function viewTask(idInput: string): void {
@@ -88,6 +102,11 @@ export function taskCommand(): Command {
     .option("-c, --col <name>", "Column to put it in (case-insensitive)")
     .option("-d, --description <text>", "Markdown description")
     .option("--parent <id>", "Make this a subtask of the given task (full ulid or unique suffix)")
+    .option(
+      "--tag <spec>",
+      "Tag spec: NAME or NAME=COLOR. Repeatable. Auto-creates tags on first use.",
+      collectString,
+    )
     .action((title: string, opts: AddOptions) => {
       const { db } = resolveProjectDb();
       try {
@@ -111,6 +130,7 @@ export function taskCommand(): Command {
           columnId,
           parentId,
           priority: opts.priority,
+          tags: opts.tag,
         });
         console.log(`Created ${task.id.slice(-6)}  ${task.title}`);
       } catch (e) {
@@ -125,11 +145,24 @@ export function taskCommand(): Command {
     .description("List tasks grouped by column")
     .option("-c, --col <name>", "Only show tasks in the named column")
     .option("--tree", "Show subtasks indented under their parents (ignores column grouping)")
+    .option(
+      "--tag <name>",
+      "Filter to tasks tagged with this name. Repeatable; multiple --tag flags AND together.",
+      collectString,
+    )
+    .option(
+      "--any-tag <name>",
+      "Filter to tasks tagged with any of these names. Repeatable; OR semantics.",
+      collectString,
+    )
     .action((opts: ListOptions) => {
       const { db } = resolveProjectDb();
       try {
         const columns = listColumns(db);
-        const allTasks = listTasks(db);
+        const allTasks = listTasks(db, {
+          tags: opts.tag,
+          anyTags: opts.anyTag,
+        });
 
         if (allTasks.length === 0) {
           console.log('No tasks. Use `writ task add "title"` to create one.');
@@ -212,87 +245,27 @@ export function taskCommand(): Command {
   cmd
     .command("edit <id>")
     .description("Open a task in $EDITOR (frontmatter + markdown body)")
-    .action((idInput: string) => {
+    .option(
+      "--tag <spec>",
+      "Replace the task's tag set (NAME or NAME=COLOR). Repeatable. Skips the editor.",
+      collectString,
+    )
+    .action((idInput: string, opts: EditOptions) => {
       const { db } = resolveProjectDb();
-      let tempPath: string | undefined;
       try {
         const task = resolveTaskId(db, idInput);
-        const columns = listColumns(db);
-        const colName = columns.find((c) => c.id === task.columnId)?.name ?? "";
-        const parentSuffix = task.parentId ? task.parentId.slice(-6) : undefined;
 
-        const initial = serializeTaskFile({
-          task,
-          columnName: colName,
-          columnNames: columns.map((c) => c.name),
-          parentSuffix,
-        });
-        const filename = `task-${task.id.slice(-6)}.md`;
-        const edited = editInExternalEditor(initial, filename);
-        tempPath = edited.tempPath;
-
-        if (edited.content === initial) {
-          console.log("No changes.");
-          cleanupTempFile(tempPath);
-          tempPath = undefined;
+        // Direct flag mode: `--tag X --tag Y` replaces the set without opening
+        // the editor. Plays the role of a one-shot tag-set command without
+        // proliferating top-level subcommands.
+        if (opts.tag !== undefined) {
+          updateTask(db, task.id, { tags: opts.tag });
+          console.log(`Updated ${task.id.slice(-6)}  (tags)`);
           return;
         }
 
-        const parsed = parseTaskFile(edited.content);
-        const update: {
-          title?: string;
-          description?: string;
-          priority?: Priority;
-          columnId?: string;
-          parentId?: string | null;
-        } = {};
-
-        if (parsed.title !== undefined && parsed.title !== task.title) {
-          update.title = parsed.title;
-        }
-        if (parsed.description !== task.description) {
-          update.description = parsed.description;
-        }
-        if (parsed.priority !== undefined && parsed.priority !== task.priority) {
-          update.priority = parsed.priority;
-        }
-        if (parsed.colName !== undefined) {
-          const col = getColumnByName(db, parsed.colName);
-          if (!col) {
-            throw new TaskFileParseError(
-              `col: '${parsed.colName}' not found. ${availableColumns(db)}`,
-            );
-          }
-          if (col.id !== task.columnId) update.columnId = col.id;
-        }
-        if (parsed.parentInput !== undefined) {
-          if (parsed.parentInput === null) {
-            if (task.parentId !== null) update.parentId = null;
-          } else {
-            const parent = resolveTaskId(db, parsed.parentInput);
-            if (parent.id === task.id) {
-              throw new TaskFileParseError("parent: a task cannot be its own parent");
-            }
-            if (parent.id !== task.parentId) update.parentId = parent.id;
-          }
-        }
-
-        if (Object.keys(update).length === 0) {
-          console.log("No changes.");
-        } else {
-          updateTask(db, task.id, update);
-          const summary = Object.keys(update).join(", ");
-          console.log(`Updated ${task.id.slice(-6)}  (${summary})`);
-        }
-
-        cleanupTempFile(tempPath);
-        tempPath = undefined;
+        editTaskViaEditor(db, task);
       } catch (e) {
-        if (e instanceof TaskFileParseError && tempPath) {
-          process.stderr.write(`${e.message}\n`);
-          process.stderr.write(`Your edits are preserved at: ${tempPath}\n`);
-          process.exit(1);
-        }
         handleCliError(e);
       } finally {
         db.close();
@@ -302,14 +275,116 @@ export function taskCommand(): Command {
   return cmd;
 }
 
+function editTaskViaEditor(db: import("../../shared/db").SqliteDb, task: Task): void {
+  const columns = listColumns(db);
+  const colName = columns.find((c) => c.id === task.columnId)?.name ?? "";
+  const parentSuffix = task.parentId ? task.parentId.slice(-6) : undefined;
+
+  const initial = serializeTaskFile({
+    task,
+    columnName: colName,
+    columnNames: columns.map((c) => c.name),
+    parentSuffix,
+  });
+  const filename = `task-${task.id.slice(-6)}.md`;
+  const edited = editInExternalEditor(initial, filename);
+  let tempPath: string | undefined = edited.tempPath;
+
+  try {
+    if (edited.content === initial) {
+      console.log("No changes.");
+      cleanupTempFile(tempPath);
+      tempPath = undefined;
+      return;
+    }
+
+    const parsed = parseTaskFile(edited.content);
+    const update: {
+      title?: string;
+      description?: string;
+      priority?: Priority;
+      columnId?: string;
+      parentId?: string | null;
+      tags?: string[];
+    } = {};
+
+    if (parsed.title !== undefined && parsed.title !== task.title) {
+      update.title = parsed.title;
+    }
+    if (parsed.description !== task.description) {
+      update.description = parsed.description;
+    }
+    if (parsed.priority !== undefined && parsed.priority !== task.priority) {
+      update.priority = parsed.priority;
+    }
+    if (parsed.colName !== undefined) {
+      const col = getColumnByName(db, parsed.colName);
+      if (!col) {
+        throw new TaskFileParseError(`col: '${parsed.colName}' not found. ${availableColumns(db)}`);
+      }
+      if (col.id !== task.columnId) update.columnId = col.id;
+    }
+    if (parsed.parentInput !== undefined) {
+      if (parsed.parentInput === null) {
+        if (task.parentId !== null) update.parentId = null;
+      } else {
+        const parent = resolveTaskId(db, parsed.parentInput);
+        if (parent.id === task.id) {
+          throw new TaskFileParseError("parent: a task cannot be its own parent");
+        }
+        if (parent.id !== task.parentId) update.parentId = parent.id;
+      }
+    }
+    if (parsed.tags !== undefined && !sameTagSet(parsed.tags, task.tags)) {
+      update.tags = parsed.tags;
+    }
+
+    if (Object.keys(update).length === 0) {
+      console.log("No changes.");
+    } else {
+      updateTask(db, task.id, update);
+      const summary = Object.keys(update).join(", ");
+      console.log(`Updated ${task.id.slice(-6)}  (${summary})`);
+    }
+
+    cleanupTempFile(tempPath);
+    tempPath = undefined;
+  } catch (e) {
+    if (e instanceof TaskFileParseError && tempPath) {
+      process.stderr.write(`${e.message}\n`);
+      process.stderr.write(`Your edits are preserved at: ${tempPath}\n`);
+      process.exit(1);
+    }
+    throw e;
+  }
+}
+
+// Compares "incoming spec list" (which may include =COLOR suffixes) against
+// the task's current plain tag names. We only short-circuit when the name set
+// is identical AND no spec carries a color override. A name-only re-list of
+// the same tags is a no-op; passing `--tag UI=red` after `UI` triggers an
+// update so the color side-effect goes through.
+function sameTagSet(incoming: string[], current: string[]): boolean {
+  if (incoming.some((s) => s.includes("="))) return false;
+  if (incoming.length !== current.length) return false;
+  const a = [...incoming].sort();
+  const b = [...current].sort();
+  return a.every((v, i) => v === b[i]);
+}
+
 function priorityChip(p: Priority): string {
   if (p === 2) return "";
   return `[${PRIORITY_NAMES[p][0]}] `;
 }
 
+function tagChip(tags: string[]): string {
+  if (tags.length === 0) return "";
+  return ` [${tags.join(", ")}]`;
+}
+
 function formatTaskLine(t: Task, childCount: number): string {
   const subs = childCount > 0 ? ` (${childCount} sub)` : "";
-  return `${t.id.slice(-6)}  ${priorityChip(t.priority)}${t.title}${subs}`;
+  return `${t.id.slice(-6)}  ${priorityChip(t.priority)}${t.title}${tagChip(t.tags)}${subs}`;
 }
 
 function countChildrenByParent(tasks: Task[]): Map<string, number> {
@@ -333,7 +408,9 @@ function renderTree(tasks: Task[]): void {
     const children = byParent.get(parentId) ?? [];
     for (const t of children) {
       const indent = "  ".repeat(depth);
-      console.log(`${indent}${t.id.slice(-6)}  ${priorityChip(t.priority)}${t.title}`);
+      console.log(
+        `${indent}${t.id.slice(-6)}  ${priorityChip(t.priority)}${t.title}${tagChip(t.tags)}`,
+      );
       walk(t.id, depth + 1);
     }
   }
@@ -356,6 +433,7 @@ export function renderTaskView(task: Task, columns: Column[], allTasks: Task[]):
   const colName = columns.find((c) => c.id === task.columnId)?.name ?? "?";
   const parentLabel = task.parentId ? task.parentId.slice(-6) : "—";
   const subtasks = allTasks.filter((t) => t.parentId === task.id);
+  const tagLabel = task.tags.length === 0 ? "—" : task.tags.join(", ");
   const pad = (s: string): string => s.padEnd(10);
 
   const lines: string[] = [
@@ -364,6 +442,7 @@ export function renderTaskView(task: Task, columns: Column[], allTasks: Task[]):
     `${pad("Column")} ${colName}`,
     `${pad("Priority")} ${PRIORITY_NAMES[task.priority]}`,
     `${pad("Parent")} ${parentLabel}`,
+    `${pad("Tags")} ${tagLabel}`,
     `${pad("Subtasks")} ${subtasks.length}`,
     `${pad("Created")} ${formatTimestamp(task.createdAt)}`,
     `${pad("Updated")} ${formatTimestamp(task.updatedAt)}`,

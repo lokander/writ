@@ -14,6 +14,7 @@ function makeTask(overrides: Partial<Task> = {}): Task {
     description: "Two percent",
     priority: 1,
     position: 1000,
+    tags: [],
     createdAt: now,
     updatedAt: now,
     ...overrides,

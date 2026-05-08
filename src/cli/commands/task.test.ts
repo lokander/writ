@@ -13,6 +13,7 @@ function makeTask(overrides: Partial<Task> = {}): Task {
     description: "",
     priority: 2,
     position: 1000,
+    tags: [],
     // Fixed timestamps so the formatted output is deterministic.
     createdAt: 1735776000000, // 2025-01-02 00:00 UTC
     updatedAt: 1735776000000,

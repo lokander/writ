@@ -6,6 +6,7 @@ import icon from "../../resources/icon.png?asset";
 import { openDatabase, type SqliteDb } from "../shared/db";
 import { listColumns } from "../shared/domain/columns";
 import { findProjectRoot, getDbPath } from "../shared/domain/project";
+import { listTags } from "../shared/domain/tags";
 import { createTask, deleteTask, listTasks, updateTask } from "../shared/domain/tasks";
 import type { NewTask, ProjectInfo, TaskUpdate } from "../shared/types";
 
@@ -45,6 +46,7 @@ function registerIpcHandlers(): void {
     if (!currentDb) throw new Error("No project open");
     return deleteTask(currentDb, id);
   });
+  ipcMain.handle("tags:list", () => (currentDb ? listTags(currentDb) : []));
 }
 
 function createWindow(): void {

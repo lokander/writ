@@ -2,6 +2,7 @@ import { ulid } from "ulid";
 import type { SqliteDb } from "../db";
 import type { NewTask, Priority, Task, TaskUpdate } from "../types";
 import { getFirstColumn } from "./columns";
+import { listTaskTagNames, listTaskTagsByTaskIds, setTaskTags } from "./tags";
 
 interface TaskRow {
   id: string;
@@ -24,6 +25,7 @@ function fromRow(row: TaskRow): Task {
     description: row.description,
     priority: row.priority as Priority,
     position: row.position,
+    tags: [],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -40,34 +42,47 @@ export function createTask(db: SqliteDb, input: NewTask): Task {
     .get(columnId) as { m: number };
   const position = max.m + 1000;
 
-  db.prepare(
-    `INSERT INTO tasks
-       (id, parent_id, column_id, title, description, priority, position, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(
-    id,
-    input.parentId ?? null,
-    columnId,
-    input.title,
-    input.description ?? "",
-    input.priority ?? 2,
-    position,
-    now,
-    now,
-  );
+  db.transaction(() => {
+    db.prepare(
+      `INSERT INTO tasks
+         (id, parent_id, column_id, title, description, priority, position, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      id,
+      input.parentId ?? null,
+      columnId,
+      input.title,
+      input.description ?? "",
+      input.priority ?? 2,
+      position,
+      now,
+      now,
+    );
+
+    if (input.tags && input.tags.length > 0) {
+      setTaskTags(db, id, input.tags);
+    }
+  })();
 
   return getTask(db, id)!;
 }
 
 export function getTask(db: SqliteDb, id: string): Task | null {
   const row = db.prepare(`SELECT * FROM tasks WHERE id = ?`).get(id) as TaskRow | undefined;
-  return row ? fromRow(row) : null;
+  if (!row) return null;
+  const task = fromRow(row);
+  task.tags = listTaskTagNames(db, id);
+  return task;
 }
 
 export interface ListFilter {
   columnId?: string;
   // undefined = no filter; null = top-level only; string = children of that id.
   parentId?: string | null;
+  // AND filter: returned tasks must have all of these tag names.
+  tags?: string[];
+  // OR filter: returned tasks must have at least one of these tag names.
+  anyTags?: string[];
 }
 
 export function listTasks(db: SqliteDb, filter: ListFilter = {}): Task[] {
@@ -91,7 +106,29 @@ export function listTasks(db: SqliteDb, filter: ListFilter = {}): Task[] {
   const rows = db
     .prepare(`SELECT * FROM tasks ${where} ORDER BY column_id, position`)
     .all(...params) as TaskRow[];
-  return rows.map(fromRow);
+  let tasks = rows.map(fromRow);
+
+  // Bulk-load tags so the renderer/CLI can show them without N+1 queries.
+  const tagsByTaskId = listTaskTagsByTaskIds(
+    db,
+    tasks.map((t) => t.id),
+  );
+  for (const task of tasks) {
+    task.tags = tagsByTaskId[task.id] ?? [];
+  }
+
+  // Tag filtering happens in JS — clearer than threading another join into
+  // the dynamic SQL above and fast enough at task-tracker scales.
+  if (filter.tags && filter.tags.length > 0) {
+    const required = filter.tags;
+    tasks = tasks.filter((t) => required.every((name) => t.tags.includes(name)));
+  }
+  if (filter.anyTags && filter.anyTags.length > 0) {
+    const allowed = filter.anyTags;
+    tasks = tasks.filter((t) => allowed.some((name) => t.tags.includes(name)));
+  }
+
+  return tasks;
 }
 
 export function updateTask(db: SqliteDb, id: string, update: TaskUpdate): Task | null {
@@ -126,13 +163,23 @@ export function updateTask(db: SqliteDb, id: string, update: TaskUpdate): Task |
     params.push(update.position);
   }
 
-  if (fields.length === 0) return existing;
+  const hasFieldUpdate = fields.length > 0;
+  const hasTagUpdate = update.tags !== undefined;
 
-  fields.push("updated_at = ?");
-  params.push(Date.now());
-  params.push(id);
+  if (!hasFieldUpdate && !hasTagUpdate) return existing;
 
-  db.prepare(`UPDATE tasks SET ${fields.join(", ")} WHERE id = ?`).run(...params);
+  db.transaction(() => {
+    if (hasFieldUpdate) {
+      fields.push("updated_at = ?");
+      params.push(Date.now());
+      params.push(id);
+      db.prepare(`UPDATE tasks SET ${fields.join(", ")} WHERE id = ?`).run(...params);
+    }
+    if (hasTagUpdate) {
+      setTaskTags(db, id, update.tags!);
+    }
+  })();
+
   return getTask(db, id);
 }
 
@@ -185,5 +232,7 @@ export function resolveTaskId(db: SqliteDb, input: string): Task {
 
   if (rows.length === 0) throw new TaskNotFoundError(input);
   if (rows.length > 1) throw new AmbiguousTaskError(input, rows.map(fromRow));
+  // resolveTaskId callers don't use .tags off this — they call getTask if they
+  // need the full hydrated task. Returning a tag-empty task is fine here.
   return fromRow(rows[0]);
 }

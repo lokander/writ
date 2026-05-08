@@ -51,6 +51,9 @@ export function serializeTaskFile({
     "",
     "# parent: ulid suffix of parent task, or null for top-level",
     `parent: ${parentSuffix ? yamlScalar(parentSuffix) : "null"}`,
+    "",
+    "# tags: list of NAME or NAME=COLOR specs. Colors set on a tag persist globally.",
+    `tags: ${yamlTagList(task.tags)}`,
     "---",
     "",
     BODY_HINT,
@@ -66,6 +69,9 @@ export interface ParsedTaskFile {
   priority?: Priority;
   colName?: string;
   parentInput?: string | null;
+  // Array of tag specs (NAME or NAME=COLOR). Empty array clears all tags.
+  // Validation/normalization happens later via setTaskTags.
+  tags?: string[];
   description: string;
 }
 
@@ -134,6 +140,21 @@ export function parseTaskFile(content: string): ParsedTaskFile {
     }
   }
 
+  if ("tags" in fm) {
+    const v = fm.tags;
+    if (!Array.isArray(v)) {
+      throw new TaskFileParseError("tags: must be a list of strings");
+    }
+    const specs: string[] = [];
+    for (const entry of v) {
+      if (typeof entry !== "string" || entry.trim().length === 0) {
+        throw new TaskFileParseError("tags: entries must be non-empty strings");
+      }
+      specs.push(entry.trim());
+    }
+    out.tags = specs;
+  }
+
   return out;
 }
 
@@ -156,4 +177,11 @@ function yamlScalar(value: string): string {
     return value;
   }
   return JSON.stringify(value);
+}
+
+// Tag names already match /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/ so they're always
+// safe as unquoted YAML scalars in flow style — no quoting needed.
+function yamlTagList(names: string[]): string {
+  if (names.length === 0) return "[]";
+  return `[${names.join(", ")}]`;
 }
