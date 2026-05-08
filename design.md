@@ -94,33 +94,10 @@ This costs us a small launcher script in distribution (electron-builder writes i
 - UI: Svelte 5 (runes mode), TypeScript, Vite via electron-vite.
 - Data: SQLite via `better-sqlite3` (synchronous, fast, perfect for a desktop app's main process and a CLI).
 - MCP: `@modelcontextprotocol/sdk` over stdio.
-- CLI parser: TBD — likely `commander` for familiarity, but the surface is small enough that a hand-rolled router is also fine.
+- CLI parser: `commander`.
 - Packaging: electron-builder (already configured) for the desktop app + launcher shim. The CLI is a separate `tsup`/`vite`/`esbuild` bundle into `dist/cli/index.js`.
 
-## Repository layout (target)
-
-```
-src/
-  shared/
-    domain/           — task CRUD, project resolution, validation
-    db/               — schema, migrations, connection mgmt
-    types/            — Task, Project, Status, Priority, Tag, ...
-    ipc-contract/     — typed channel names + payloads, used by main + preload
-  main/               — Electron main: window mgmt, IPC handlers, fs.watch on registered DBs, socket listener
-  preload/            — bridge that exposes a typed `window.writ` API
-  renderer/           — Svelte 5 UI (Kanban, List, task detail)
-  cli/
-    index.ts          — argv router; entry point for the `writ` binary
-    commands/
-      task.ts         — add | list | rm | done | edit | move
-      init.ts
-      register.ts
-      mcp.ts          — runs stdio MCP server
-      open.ts         — `writ` with no subcommand: launch/focus the app
-  mcp/
-    server.ts         — exports runMcpServer(); imports shared/domain
-    tools.ts          — tool definitions, all delegating to shared/domain
-```
+The current CLI and MCP surfaces are the live source of truth — see the [README](./README.md), `writ --help`, and the registered `mcp__writ__*` tools rather than restating them here. Active work is tracked in writ itself (`mcp__writ__list_tasks`).
 
 ## Data model
 
@@ -170,45 +147,6 @@ Notes:
 - `parent_id` is the only subtask mechanism — kanban shows top-level cards; the card surfaces a `done/total` count for descendants; the detail view shows the full tree.
 - Default columns on `init`: `Backlog`, `Todo`, `Doing`, `Done`. User-editable.
 
-## CLI surface (sketch — not locked)
-
-```
-writ                       open app, focus current project (or last) if app is running
-writ init                  create .writ/writ.db here, with default columns
-writ register [path]       add path (default cwd) to ~/.config/writ/registry.json
-
-writ task add "title"      [--priority p|h|n|l] [--tag foo] [--col Doing] [--parent <id>]
-writ task list             [--status doing] [--tag foo] [--tree]
-writ task done <id>
-writ task rm <id>
-writ task edit <id>        opens $EDITOR on the description (markdown)
-writ task move <id> <col>  by name or id
-
-writ mcp                   stdio MCP server, long-lived
-```
-
-Open question: collapse `writ task add` to `writ add`? Tasks are the only noun. Probably yes; revisit when there's a second noun (tags? columns?). For now, design for `writ task ...` namespace and add shortcuts later.
-
-## MCP tools (initial)
-
-Each tool is a thin wrapper around a function in `shared/domain`. No business logic in the MCP layer.
-
-- `list_tasks(filter?)` → tasks in the current project, with optional status/tag/parent filters
-- `get_task(id)`
-- `create_task(title, description?, column?, priority?, tags?, parent?)`
-- `update_task(id, fields)`
-- `move_task(id, column, position?)`
-- `delete_task(id)`
-- `list_columns()`
-- `list_projects()` → reads the registry, useful when an agent is asked to "look at all my todos"
-- `set_project(path)` → for sessions where cwd doesn't match the intended project
-
-## UI
-
-- **Kanban view (default):** columns horizontally, cards within. Drag to reorder and to change column. Cards show title, priority chip, tag chips, subtask progress (e.g. `2/5`). Click → detail pane (markdown description editor).
-- **List view:** flat or tree (toggle). Indented subtasks. Faster for keyboard-driven users.
-- **Project switcher:** sidebar listing registered projects. "All projects" view (aggregated) is a stretch goal.
-
 ## Decision log
 
 ### MCP transport: stdio with direct SQLite + optional liveness ping (Hybrid B)
@@ -255,23 +193,4 @@ For unsaved-edit prompts (e.g. an open task description), don't put the guard in
 
 Hook all quit-time work in the renderer here, not in `before-quit`.
 
-## Phased implementation
-
-1. **Scaffold** — strip electron-vite boilerplate (Versions.svelte, demo IPC). Add `src/shared/`, `src/cli/`, `src/mcp/` directories. Add `better-sqlite3` and rebuild for Electron.
-2. **Domain + db** — schema, migrations, project resolution, task CRUD. Pure functions over a `Database` handle. Unit-tested without Electron.
-3. **CLI v0** — `writ init`, `writ task add`, `writ task list`, `writ task done`. No app integration yet. Validates the domain layer end-to-end from a real entry point.
-4. **Electron renderer + IPC** — list view first (simpler), wired through `shared/domain`. Open a project from the file picker; show its tasks; add/edit/done.
-5. **Kanban view** — drag-drop, column reordering, position management.
-6. **`writ mcp`** — stdio MCP server. Tools above. Same domain layer.
-7. **Liveness ping** — Unix socket, app-side listener, `fs.watch` fallback.
-8. **`writ` (no subcommand)** — launch/focus app, send "open project" over the socket.
-9. **Polish** — tags UI, priority filters, subtask checklists on cards, registry-aware project switcher.
-10. **Packaging** — electron-builder shim for `writ` on PATH on all three OSes.
-
-## Open questions
-
-- `writ task add` vs `writ add` — defer until a second noun shows up.
-- Should `writ init` ask before creating, or just do it? (Probably just do it; it's a single hidden directory.)
-- Default `.writ/` gitignored or committed? Recommendation: gitignore by default (since it's a SQLite binary), document `writ export` for committing a markdown snapshot if users want one.
-- Stable project ID across renames: store one in `meta` so the registry can survive `mv repo-old repo-new`.
-- Aggregated "All projects" view: nice-to-have or core? Treating as stretch unless you say otherwise.
+_Active work and the running backlog live in writ itself; query via `mcp__writ__list_tasks` or `writ task list` from the project root._
