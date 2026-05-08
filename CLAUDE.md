@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-**writ is in active early development.** The shared domain layer (`src/shared/{types,db,domain}`) and the CLI (`writ init`, `writ task add | list | move | rm | edit`) are implemented and usable via `bin/writ-dev` or `npm run cli`. The MCP server and the Electron renderer are not yet built; `src/main` and `src/renderer` are minimal placeholders.
+**writ is in active early development.** Shipped: the shared domain layer (`src/shared/{types,db,domain}`), the CLI (`writ init`, `writ task add | list | view | move | edit | rm`, plus bare `writ task <id>` as a `view` shortcut), and the stdio MCP server (`writ mcp`, `src/mcp/`) with seven task tools. The Electron renderer is still a placeholder; `src/main` and `src/renderer` carry only the minimum needed to keep `npm run dev` building.
+
+`.mcp.json` at the repo root registers writ's own MCP server (`./bin/writ-dev mcp`), so a Claude Code session opened in this repo gets `mcp__writ__*` tools alongside its in-session task tools. The user tracks ongoing work in writ via these tools — when proposing new tasks, add them to writ via `mcp__writ__create_task`, _not_ to the in-session task list, and don't start work on them until the user gives the go-ahead.
 
 **`design.md` at the repo root is the architectural source of truth.** Read it before making non-trivial changes. It defines: per-project SQLite at `<repo>/.writ/writ.db`, two binaries (a fast Node `writ` CLI plus the Electron app it can launch), a stdio MCP server (`writ mcp`) that writes SQLite directly with a best-effort liveness ping to a running desktop app, a shared domain layer that the CLI, MCP server, and Electron main process all import, and a phased build plan starting with scaffold cleanup and the data layer.
 
