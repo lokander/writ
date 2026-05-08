@@ -1,16 +1,10 @@
-<script lang="ts"></script>
+<script lang="ts">
+  import { Notepad } from "phosphor-svelte";
+</script>
 
-<main>
-  <h1>writ</h1>
-  <p>UI not implemented yet.</p>
+<main class="flex h-full flex-col items-center justify-center gap-4 bg-base-100 text-base-content">
+  <Notepad size={48} weight="duotone" />
+  <h1 class="text-3xl font-semibold">writ</h1>
+  <p class="text-base-content/70">UI not implemented yet.</p>
+  <button class="btn btn-primary btn-sm">Toolchain check</button>
 </main>
-
-<style>
-  main {
-    padding: 2rem;
-  }
-  h1 {
-    font-size: 2rem;
-    margin-bottom: 1rem;
-  }
-</style>
