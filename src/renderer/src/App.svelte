@@ -112,7 +112,10 @@
 
     <div class="flex flex-1 flex-col gap-2 overflow-y-auto p-4">
       {#each tasksInActiveColumn as task (task.id)}
-        <div class="card bg-base-200 px-4 py-2 text-sm">{task.title}</div>
+        <div class="card flex flex-row items-baseline gap-3 bg-base-200 px-4 py-2 text-sm">
+          <span class="font-mono text-xs opacity-50">{task.id.slice(-6)}</span>
+          <span>{task.title}</span>
+        </div>
       {:else}
         <p class="text-sm italic opacity-40">No tasks here.</p>
       {/each}
