@@ -30,6 +30,8 @@ npm run build:mac        # dmg
 npm run build:win        # nsis installer
 ```
 
+**Don't run lint/format/typecheck manually after edits.** Hooks in `.claude/settings.json` run prettier, eslint, `typecheck:node`, and `svelte-check` automatically after every Edit/Write to a matching file, scoped by path. They block the next tool call (exit code 2) if checks fail, so you'll see the error inline. Use the scripts above only when you need to run them across the whole tree.
+
 There is no test runner configured yet. When adding the data layer, pick one (vitest is the natural fit alongside Vite) and wire `npm test` before writing tests against `shared/domain/`.
 
 ## TypeScript project layout
