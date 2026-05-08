@@ -5,6 +5,31 @@
   import { writState } from "./lib/state.svelte";
 
   let newTaskTitle = $state("");
+  let activeColumnId = $state<string | null>(null);
+
+  // Default the active tab to the first column once columns load. Re-runs if
+  // the columns list changes; doesn't override an already-set active tab as
+  // long as it still exists.
+  $effect(() => {
+    if (writState.columns.length === 0) return;
+    const stillThere = writState.columns.some((c) => c.id === activeColumnId);
+    if (!stillThere) activeColumnId = writState.columns[0]!.id;
+  });
+
+  const tasksInActiveColumn = $derived(
+    activeColumnId === null
+      ? []
+      : writState.tasks.filter((t) => t.columnId === activeColumnId && t.parentId === null),
+  );
+
+  const tasksByColumn = $derived.by(() => {
+    const counts: Record<string, number> = {};
+    for (const t of writState.tasks) {
+      if (t.parentId !== null) continue;
+      counts[t.columnId] = (counts[t.columnId] ?? 0) + 1;
+    }
+    return counts;
+  });
 
   onMount(() => {
     writState.loadAll();
@@ -12,8 +37,13 @@
 
   async function handleAdd(): Promise<void> {
     if (newTaskTitle.trim().length === 0) return;
-    await writState.addTask(newTaskTitle);
-    newTaskTitle = "";
+    const created = await writState.addTask(newTaskTitle);
+    if (created) {
+      // Jump to whichever column the task landed in (Backlog by default), so
+      // the user sees what they just typed.
+      activeColumnId = created.columnId;
+      newTaskTitle = "";
+    }
   }
 
   function onSubmit(event: SubmitEvent): void {
@@ -50,7 +80,7 @@
         <input
           type="text"
           class="input input-bordered join-item flex-1"
-          placeholder="Add a task…"
+          placeholder="Add a task"
           bind:value={newTaskTitle}
         />
         <button
@@ -64,24 +94,27 @@
       </form>
     </div>
 
-    <div class="flex flex-1 flex-col gap-6 overflow-y-auto p-4">
+    <div role="tablist" class="tabs tabs-border bg-base-200 px-4">
       {#each writState.columns as col (col.id)}
-        {@const tasksInCol = writState.tasks.filter(
-          (t) => t.columnId === col.id && t.parentId === null,
-        )}
-        <section>
-          <h2 class="mb-2 text-xs font-semibold tracking-wide uppercase opacity-60">
-            {col.name}
-            <span class="opacity-50">({tasksInCol.length})</span>
-          </h2>
-          <div class="space-y-2">
-            {#each tasksInCol as task (task.id)}
-              <div class="card bg-base-200 px-4 py-2 text-sm">{task.title}</div>
-            {:else}
-              <p class="text-xs italic opacity-40">No tasks</p>
-            {/each}
-          </div>
-        </section>
+        {@const count = tasksByColumn[col.id] ?? 0}
+        <button
+          type="button"
+          role="tab"
+          class="tab"
+          class:tab-active={activeColumnId === col.id}
+          onclick={() => (activeColumnId = col.id)}
+        >
+          {col.name}
+          <span class="ml-2 text-xs opacity-60">{count}</span>
+        </button>
+      {/each}
+    </div>
+
+    <div class="flex flex-1 flex-col gap-2 overflow-y-auto p-4">
+      {#each tasksInActiveColumn as task (task.id)}
+        <div class="card bg-base-200 px-4 py-2 text-sm">{task.title}</div>
+      {:else}
+        <p class="text-sm italic opacity-40">No tasks here.</p>
       {/each}
     </div>
   {/if}

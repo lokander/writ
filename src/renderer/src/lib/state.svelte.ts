@@ -26,14 +26,16 @@ export class WritState {
     }
   }
 
-  async addTask(title: string): Promise<void> {
+  async addTask(title: string): Promise<Task | null> {
     const trimmed = title.trim();
-    if (trimmed.length === 0) return;
+    if (trimmed.length === 0) return null;
     try {
       const task = await window.api.tasks.create({ title: trimmed });
       this.tasks = [...this.tasks, task];
+      return task;
     } catch (e) {
       this.error = e instanceof Error ? e.message : String(e);
+      return null;
     }
   }
 }
