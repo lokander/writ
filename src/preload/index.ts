@@ -1,12 +1,21 @@
-import { contextBridge } from "electron";
+import { contextBridge, ipcRenderer } from "electron";
 import { electronAPI } from "@electron-toolkit/preload";
 
-// Custom APIs for renderer
-const api = {};
+import type { Column, NewTask, ProjectInfo, Task } from "../shared/types";
 
-// Use `contextBridge` APIs to expose Electron APIs to
-// renderer only if context isolation is enabled, otherwise
-// just add to the DOM global.
+const api = {
+  project: {
+    current: (): Promise<ProjectInfo | null> => ipcRenderer.invoke("project:current"),
+  },
+  columns: {
+    list: (): Promise<Column[]> => ipcRenderer.invoke("columns:list"),
+  },
+  tasks: {
+    list: (): Promise<Task[]> => ipcRenderer.invoke("tasks:list"),
+    create: (input: NewTask): Promise<Task> => ipcRenderer.invoke("tasks:create", input),
+  },
+};
+
 if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld("electron", electronAPI);
@@ -20,3 +29,5 @@ if (process.contextIsolated) {
   // @ts-ignore (define in dts)
   window.api = api;
 }
+
+export type Api = typeof api;

@@ -1,7 +1,43 @@
-import { app, shell, BrowserWindow } from "electron";
+import { app, shell, BrowserWindow, ipcMain } from "electron";
 import { join } from "path";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import icon from "../../resources/icon.png?asset";
+
+import { openDatabase, type SqliteDb } from "../shared/db";
+import { listColumns } from "../shared/domain/columns";
+import { findProjectRoot, getDbPath } from "../shared/domain/project";
+import { createTask, listTasks } from "../shared/domain/tasks";
+import type { NewTask, ProjectInfo } from "../shared/types";
+
+let currentDb: SqliteDb | null = null;
+let currentProject: ProjectInfo | null = null;
+
+function openCurrentProject(): void {
+  // Slice 1 of the renderer: resolve from cwd. The packaged `writ` shim will
+  // launch with the user's cwd; a richer project picker (writ task 44ZCQS)
+  // covers double-click and "no project here" paths later.
+  const root = findProjectRoot(process.cwd());
+  if (!root) return;
+  const dbPath = getDbPath(root);
+  currentDb = openDatabase(dbPath);
+  currentProject = { root, dbPath };
+}
+
+function closeCurrentProject(): void {
+  currentDb?.close();
+  currentDb = null;
+  currentProject = null;
+}
+
+function registerIpcHandlers(): void {
+  ipcMain.handle("project:current", () => currentProject);
+  ipcMain.handle("columns:list", () => (currentDb ? listColumns(currentDb) : []));
+  ipcMain.handle("tasks:list", () => (currentDb ? listTasks(currentDb) : []));
+  ipcMain.handle("tasks:create", (_event, input: NewTask) => {
+    if (!currentDb) throw new Error("No project open");
+    return createTask(currentDb, input);
+  });
+}
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -39,6 +75,8 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window);
   });
 
+  openCurrentProject();
+  registerIpcHandlers();
   createWindow();
 
   app.on("activate", () => {
@@ -51,3 +89,5 @@ app.on("window-all-closed", () => {
     app.quit();
   }
 });
+
+app.on("before-quit", closeCurrentProject);
