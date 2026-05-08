@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { electronAPI } from "@electron-toolkit/preload";
 
-import type { Column, NewTask, ProjectInfo, Task } from "../shared/types";
+import type { Column, NewTask, ProjectInfo, Task, TaskUpdate } from "../shared/types";
 
 const api = {
   project: {
@@ -13,6 +13,9 @@ const api = {
   tasks: {
     list: (): Promise<Task[]> => ipcRenderer.invoke("tasks:list"),
     create: (input: NewTask): Promise<Task> => ipcRenderer.invoke("tasks:create", input),
+    update: (id: string, update: TaskUpdate): Promise<Task | null> =>
+      ipcRenderer.invoke("tasks:update", id, update),
+    delete: (id: string): Promise<boolean> => ipcRenderer.invoke("tasks:delete", id),
   },
 };
 

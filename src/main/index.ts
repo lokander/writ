@@ -6,8 +6,8 @@ import icon from "../../resources/icon.png?asset";
 import { openDatabase, type SqliteDb } from "../shared/db";
 import { listColumns } from "../shared/domain/columns";
 import { findProjectRoot, getDbPath } from "../shared/domain/project";
-import { createTask, listTasks } from "../shared/domain/tasks";
-import type { NewTask, ProjectInfo } from "../shared/types";
+import { createTask, deleteTask, listTasks, updateTask } from "../shared/domain/tasks";
+import type { NewTask, ProjectInfo, TaskUpdate } from "../shared/types";
 
 let currentDb: SqliteDb | null = null;
 let currentProject: ProjectInfo | null = null;
@@ -37,12 +37,22 @@ function registerIpcHandlers(): void {
     if (!currentDb) throw new Error("No project open");
     return createTask(currentDb, input);
   });
+  ipcMain.handle("tasks:update", (_event, id: string, update: TaskUpdate) => {
+    if (!currentDb) throw new Error("No project open");
+    return updateTask(currentDb, id, update);
+  });
+  ipcMain.handle("tasks:delete", (_event, id: string) => {
+    if (!currentDb) throw new Error("No project open");
+    return deleteTask(currentDb, id);
+  });
 }
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
     width: 1100,
     height: 750,
+    minWidth: 1100,
+    minHeight: 750,
     show: false,
     autoHideMenuBar: true,
     ...(process.platform === "linux" ? { icon } : {}),

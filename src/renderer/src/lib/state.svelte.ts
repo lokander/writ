@@ -1,4 +1,4 @@
-import type { Column, ProjectInfo, Task } from "../../../shared/types";
+import type { Column, ProjectInfo, Task, TaskUpdate } from "../../../shared/types";
 
 export class WritState {
   project = $state<ProjectInfo | null>(null);
@@ -36,6 +36,29 @@ export class WritState {
     } catch (e) {
       this.error = e instanceof Error ? e.message : String(e);
       return null;
+    }
+  }
+
+  async updateTask(id: string, update: TaskUpdate): Promise<Task | null> {
+    try {
+      const updated = await window.api.tasks.update(id, $state.snapshot(update));
+      if (!updated) return null;
+      this.tasks = this.tasks.map((t) => (t.id === id ? updated : t));
+      return updated;
+    } catch (e) {
+      this.error = e instanceof Error ? e.message : String(e);
+      return null;
+    }
+  }
+
+  async deleteTask(id: string): Promise<boolean> {
+    try {
+      const ok = await window.api.tasks.delete(id);
+      if (ok) this.tasks = this.tasks.filter((t) => t.id !== id);
+      return ok;
+    } catch (e) {
+      this.error = e instanceof Error ? e.message : String(e);
+      return false;
     }
   }
 }

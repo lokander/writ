@@ -2,10 +2,21 @@
   import { onMount } from "svelte";
   import { Notepad, Plus } from "phosphor-svelte";
 
+  import TaskEditModal from "./lib/TaskEditModal.svelte";
   import { writState } from "./lib/state.svelte";
 
   let newTaskTitle = $state("");
   let activeColumnId = $state<string | null>(null);
+  let editingTaskId = $state<string | null>(null);
+
+  const editingTask = $derived(
+    editingTaskId === null ? null : (writState.tasks.find((t) => t.id === editingTaskId) ?? null),
+  );
+
+  // If the task being edited disappears (e.g. deleted), close the modal.
+  $effect(() => {
+    if (editingTaskId !== null && editingTask === null) editingTaskId = null;
+  });
 
   // Default the active tab to the first column once columns load. Re-runs if
   // the columns list changes; doesn't override an already-set active tab as
@@ -112,13 +123,21 @@
 
     <div class="flex flex-1 flex-col gap-2 overflow-y-auto p-4">
       {#each tasksInActiveColumn as task (task.id)}
-        <div class="card flex flex-row items-baseline gap-3 bg-base-200 px-4 py-2 text-sm">
+        <button
+          type="button"
+          class="card flex flex-row items-baseline gap-3 bg-base-200 px-4 py-2 text-left text-sm hover:bg-base-300"
+          onclick={() => (editingTaskId = task.id)}
+        >
           <span class="font-mono text-xs opacity-50">{task.id.slice(-6)}</span>
           <span>{task.title}</span>
-        </div>
+        </button>
       {:else}
         <p class="text-sm italic opacity-40">No tasks here.</p>
       {/each}
     </div>
+  {/if}
+
+  {#if editingTask}
+    <TaskEditModal task={editingTask} onClose={() => (editingTaskId = null)} />
   {/if}
 </main>
