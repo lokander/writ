@@ -4,8 +4,12 @@ import { PRIORITY_NAMES, type Priority, type Task } from "../types";
 export interface SerializeContext {
   task: Task;
   columnName: string;
+  /** All available column names; rendered into the col hint comment. */
+  columnNames: string[];
   parentSuffix?: string;
 }
+
+const BODY_HINT = "<!-- writ-hint: everything below is the description (markdown allowed) -->";
 
 const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
 const PRIORITY_BY_NAME: Record<string, Priority> = {
@@ -23,7 +27,13 @@ const PRIORITY_BY_NAME: Record<string, Priority> = {
   "3": 3,
 };
 
-export function serializeTaskFile({ task, columnName, parentSuffix }: SerializeContext): string {
+export function serializeTaskFile({
+  task,
+  columnName,
+  columnNames,
+  parentSuffix,
+}: SerializeContext): string {
+  const colHint = columnNames.length > 0 ? columnNames.join(" | ") : "existing column name";
   return [
     "---",
     `# writ task ${task.id.slice(-6)}`,
@@ -36,12 +46,14 @@ export function serializeTaskFile({ task, columnName, parentSuffix }: SerializeC
     "# priority: urgent | high | normal | low  (also accepts u/h/n/l, 0-3)",
     `priority: ${PRIORITY_NAMES[task.priority]}`,
     "",
-    "# col: existing column name (case-insensitive)",
+    `# col: ${colHint}  (case-insensitive)`,
     `col: ${yamlScalar(columnName)}`,
     "",
     "# parent: ulid suffix of parent task, or null for top-level",
     `parent: ${parentSuffix ? yamlScalar(parentSuffix) : "null"}`,
     "---",
+    "",
+    BODY_HINT,
     "",
     task.description,
     "",
@@ -126,8 +138,14 @@ export function parseTaskFile(content: string): ParsedTaskFile {
 }
 
 function stripBodyEnvelope(body: string): string {
-  // Trim a leading and trailing blank line that we add when serializing.
-  return body.replace(/^\r?\n/, "").replace(/\r?\n$/, "");
+  // Drop writ-hint comment lines so they never round-trip into the description.
+  // Also trim leading/trailing blank lines that the serializer adds.
+  const kept = body
+    .split(/\r?\n/)
+    .filter((line) => !/^\s*<!--\s*writ-hint:[\s\S]*?-->\s*$/.test(line));
+  while (kept.length > 0 && kept[0]!.trim() === "") kept.shift();
+  while (kept.length > 0 && kept[kept.length - 1]!.trim() === "") kept.pop();
+  return kept.join("\n");
 }
 
 function yamlScalar(value: string): string {

@@ -68,15 +68,19 @@ title: Buy milk
 # priority: urgent | high | normal | low  (also accepts u/h/n/l, 0-3)
 priority: high
 
-# col: existing column name (case-insensitive)
+# col: Backlog | Todo | Doing | Done  (case-insensitive)
 col: Backlog
 
 # parent: ulid suffix of parent task, or null for top-level
 parent: null
 ---
 
+<!-- writ-hint: everything below is the description (markdown allowed) -->
+
 Two percent. From the corner store.
 ```
+
+The `col:` hint lists your project's actual columns. The `<!-- writ-hint: ... -->` line is stripped on save so it never round-trips into your description.
 
 Removing a frontmatter line means _keep the current value_, not "clear it". Setting `parent: null` explicitly clears the parent. If parsing fails, the temp file path is printed so your edits aren't lost.
 

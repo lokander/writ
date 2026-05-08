@@ -195,7 +195,12 @@ export function taskCommand(): Command {
         const colName = columns.find((c) => c.id === task.columnId)?.name ?? "";
         const parentSuffix = task.parentId ? task.parentId.slice(-6) : undefined;
 
-        const initial = serializeTaskFile({ task, columnName: colName, parentSuffix });
+        const initial = serializeTaskFile({
+          task,
+          columnName: colName,
+          columnNames: columns.map((c) => c.name),
+          parentSuffix,
+        });
         const filename = `task-${task.id.slice(-6)}.md`;
         const edited = editInExternalEditor(initial, filename);
         tempPath = edited.tempPath;

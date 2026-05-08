@@ -14,14 +14,14 @@ export interface EditedFile {
 }
 
 export function resolveEditor(): { cmd: string; args: string[] } {
-  const editorCmd = process.env.WRIT_EDITOR || process.env.VISUAL || process.env.EDITOR;
-  if (!editorCmd || editorCmd.trim().length === 0) {
+  const raw = process.env.WRIT_EDITOR || process.env.VISUAL || process.env.EDITOR;
+  const [cmd, ...args] = raw?.match(/\S+/g) ?? [];
+  if (!cmd) {
     throw new EditorError(
       'No editor configured. Set $WRIT_EDITOR, $VISUAL, or $EDITOR (e.g. "code --wait" for VS Code).',
     );
   }
-  const parts = editorCmd.match(/\S+/g) ?? [];
-  return { cmd: parts[0], args: parts.slice(1) };
+  return { cmd, args };
 }
 
 /**
