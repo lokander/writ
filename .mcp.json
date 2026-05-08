@@ -17,6 +17,10 @@
       "command": "npx",
       "args": ["-y", "mcp-server-sqlite-npx", "/home/lok/projects/writ/.writ/writ.db"],
       "env": {}
+    },
+    "writ": {
+      "command": "./bin/writ-dev",
+      "args": ["mcp"]
     }
   }
 }
