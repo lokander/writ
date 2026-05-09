@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-**writ is in active early development.** Shipped: the shared domain layer (`src/shared/{types,db,domain}`), the CLI (`writ init`, `writ task add | list | view | move | edit | rm`, plus bare `writ task <id>` as a `view` shortcut), the stdio MCP server (`writ mcp`, `src/mcp/`) with seven task tools, and the renderer list view (writ task `MJM`) — column tabs, task creation, click-row-to-open edit modal with delete, IPC handlers in main, typed `window.api` in preload. Moving tasks between columns from the UI is deferred to Phase 5 (kanban + drag-drop).
+**writ is in active early development.** Shipped: the shared domain layer (`src/shared/{types,db,domain}`), the CLI (`writ init`, `writ task add | list | view | move | edit | rm`, plus bare `writ task <id>` as a `view` shortcut), the stdio MCP server (`writ mcp`, `src/mcp/`) with task + tag tools, and the renderer (writ task `KENMJM`) — list view with column tabs, view-first modal with edit toggle, subtasks (parent_id with indented rendering), tags (colors via hex / CSS named, hash-fallback for null), dependencies (depends_on graph with cycle prevention and an `isReady` derived field). Moving tasks between columns from the UI is deferred to Phase 5 (kanban + drag-drop).
 
 `.mcp.json` at the repo root registers writ's own MCP server (`./bin/writ-dev mcp`), so a Claude Code session opened in this repo gets `mcp__writ__*` tools alongside its in-session task tools. The user tracks ongoing work in writ via these tools — when proposing new tasks, add them to writ via `mcp__writ__create_task`, _not_ to the in-session task list, and don't start work on them until the user gives the go-ahead.
 
@@ -79,6 +79,14 @@ The CLI and MCP server are Node entry points; do not import Electron APIs from t
 
 - **`task edit` editor resolution.** `$WRIT_EDITOR` → `$VISUAL` → `$EDITOR`; no fallback to `vi`, no peek at `git config core.editor`. For VS Code the `--wait` flag is critical — without it `code` returns immediately and the command thinks the user is done.
 
+## Domain conventions
+
+- **Tag specs** are `NAME` or `NAME=COLOR`. Names match `^[a-zA-Z0-9][a-zA-Z0-9_-]*$`. Colors accept `#rgb`/`#rrggbb` hex or one of the 147 CSS named colors; both are normalized lowercase. NULL color means "let the renderer hash the name to a DaisyUI palette slot." Color is a tag-level property — once set, it applies wherever the tag appears.
+- **Dependencies form a strict DAG.** `setDependencies` / `addDependency` reject cycles via a forward BFS through `task_dependencies`. "Done" detection (for `isReady` / `blockedBy`) matches columns whose name is `Done` (case-insensitive), the same convention `task list --show-done` uses.
+- **`Task` hydration.** `tags`, `dependsOn`, `blockedBy`, `isReady` are populated by `getTask` / `listTasks` (with bulk loaders to avoid N+1). `resolveTaskId` is a cheap suffix-resolver that returns an unhydrated stub — call `getTask(db, resolved.id)` if you need the full record.
+- **Migrations auto-apply on every project open.** `resolveProjectDb` (CLI), `withDb` (MCP), and `openCurrentProject` (main) all run `applyMigrations`. New schema versions land for existing projects without re-init.
+- **`task list` rendering.** Default is hierarchical-by-column (subtasks indented under their parent, regardless of the child's column — `[Col]` badge if it differs). Narrowing filters (`--tag`, `--any-tag`, `--ready`, `--blocked`) switch to flat-per-column so child matches whose parent doesn't match still surface.
+
 ## Commits
 
 This repo uses [Conventional Commits](https://www.conventionalcommits.org/). Common types: `feat`, `fix`, `docs`, `refactor`, `chore`, `test`, `build`. Scope is optional but useful — sensible scopes here are `cli`, `domain`, `db`, `mcp`, `renderer`, `main`, `build`. Imperative-mood subject under ~70 chars; explain _why_ in the body when the diff doesn't make it obvious.
@@ -93,3 +101,5 @@ This repo uses [Conventional Commits](https://www.conventionalcommits.org/). Com
 ## Memory and design.md
 
 The user keeps durable architectural rationale in `~/.claude/projects/-home-lok-projects-writ/memory/` (loaded automatically). `design.md` is the in-repo, code-adjacent version. When they conflict, prefer `design.md` and update memory. When implementation diverges from both, ask before silently choosing.
+
+**When referring to a writ task, use the last 6 chars of the ulid** (e.g. `KENMJM`, not `MJM`). Matches what `task list` and the renderer cards show, so the user can copy-paste between conversation and the UI.
