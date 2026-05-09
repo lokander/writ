@@ -1,8 +1,10 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { NotepadIcon, PlusIcon, LockSimpleIcon, XIcon } from "phosphor-svelte";
+  import { NotepadIcon, PlusIcon, XIcon } from "phosphor-svelte";
 
   import AddTaskModal from "./lib/AddTaskModal.svelte";
+  import KanbanView from "./lib/KanbanView.svelte";
+  import ListView from "./lib/ListView.svelte";
   import TagChip from "./lib/TagChip.svelte";
   import TaskEditModal from "./lib/TaskEditModal.svelte";
   import { writState } from "./lib/state.svelte";
@@ -10,12 +12,16 @@
   import type { Task } from "../../shared/types";
 
   type StateFilter = "any" | "ready" | "blocked";
+  type View = "kanban" | "list";
   const STATE_FILTERS: StateFilter[] = ["any", "ready", "blocked"];
-  const STORAGE_KEY = "writ:filter";
+  const VIEWS: View[] = ["kanban", "list"];
+  const FILTER_STORAGE_KEY = "writ:filter";
+  const VIEW_STORAGE_KEY = "writ:view";
 
   let activeColumnId = $state<string | null>(null);
   let editingTaskId = $state<string | null>(null);
   let showAddModal = $state(false);
+  let view = $state<View>("kanban");
 
   // Filter state. Persisted to localStorage so a reload doesn't blow it away.
   // Single key for the whole user — only one project is open at a time and
@@ -47,9 +53,21 @@
   // (private mode, full quota) doesn't break the UI.
   $effect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ tags: filterTags, state: stateFilter }));
+      localStorage.setItem(
+        FILTER_STORAGE_KEY,
+        JSON.stringify({ tags: filterTags, state: stateFilter }),
+      );
     } catch {
       // ignore — UI continues to work, filters just won't survive a reload
+    }
+  });
+
+  // Same persistence dance for the active view (kanban vs list).
+  $effect(() => {
+    try {
+      localStorage.setItem(VIEW_STORAGE_KEY, view);
+    } catch {
+      // ignore
     }
   });
 
@@ -93,32 +111,6 @@
 
   const colorByTag = $derived(indexTags(writState.tags));
 
-  // When filters are active, switch to flat-per-column rendering — every
-  // matching task surfaces, even if its parent doesn't match (mirrors the
-  // CLI's flat-render-when-filtered behavior).
-  const tasksInActiveColumn = $derived.by(() => {
-    if (activeColumnId === null) return [];
-    if (filtersActive) {
-      return visibleTasks.filter((t) => t.columnId === activeColumnId);
-    }
-    return writState.tasks.filter((t) => t.parentId === null && t.columnId === activeColumnId);
-  });
-
-  // Tab counts also reflect the filter — otherwise "Backlog (15)" with 3
-  // visible tasks is confusing.
-  const tasksByColumn = $derived.by(() => {
-    const counts: Record<string, number> = {};
-    if (filtersActive) {
-      for (const t of visibleTasks) counts[t.columnId] = (counts[t.columnId] ?? 0) + 1;
-    } else {
-      for (const t of writState.tasks) {
-        if (t.parentId !== null) continue;
-        counts[t.columnId] = (counts[t.columnId] ?? 0) + 1;
-      }
-    }
-    return counts;
-  });
-
   function toggleTagFilter(name: string): void {
     if (filterTags.includes(name)) {
       filterTags = filterTags.filter((t) => t !== name);
@@ -135,7 +127,7 @@
   onMount(() => {
     writState.loadAll();
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = localStorage.getItem(FILTER_STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as { tags?: unknown; state?: unknown };
         if (Array.isArray(parsed.tags) && parsed.tags.every((v) => typeof v === "string")) {
@@ -150,6 +142,12 @@
       }
     } catch {
       // ignore corrupted/missing localStorage
+    }
+    try {
+      const v = localStorage.getItem(VIEW_STORAGE_KEY);
+      if (v && (VIEWS as string[]).includes(v)) view = v as View;
+    } catch {
+      // ignore
     }
   });
 
@@ -171,11 +169,19 @@
       </span>
     {/if}
     {#if writState.project && !writState.loading && !writState.error}
-      <button
-        type="button"
-        class="btn btn-primary btn-sm ml-auto"
-        onclick={() => (showAddModal = true)}
-      >
+      <div class="join ml-auto">
+        {#each VIEWS as v (v)}
+          <button
+            type="button"
+            class="btn btn-xs join-item"
+            class:btn-primary={view === v}
+            onclick={() => (view = v)}
+          >
+            {v[0].toUpperCase() + v.slice(1)}
+          </button>
+        {/each}
+      </div>
+      <button type="button" class="btn btn-primary btn-sm" onclick={() => (showAddModal = true)}>
         <PlusIcon size={14} weight="bold" />
         New task
       </button>
@@ -235,71 +241,28 @@
       {/if}
     </div>
 
-    <div role="tablist" class="tabs tabs-border bg-base-200 px-4">
-      {#each writState.columns as col (col.id)}
-        {@const count = tasksByColumn[col.id] ?? 0}
-        <button
-          type="button"
-          role="tab"
-          class="tab"
-          class:tab-active={activeColumnId === col.id}
-          onclick={() => (activeColumnId = col.id)}
-        >
-          {col.name}
-          <span class="ml-2 text-xs opacity-60">{count}</span>
-        </button>
-      {/each}
-    </div>
-
-    <div class="flex flex-1 flex-col gap-2 overflow-y-auto p-4">
-      {#each tasksInActiveColumn as task (task.id)}
-        {@render taskNode(task, null, 0, !filtersActive)}
-      {:else}
-        <p class="text-sm italic opacity-40">
-          {filtersActive ? "No tasks match the active filters." : "No tasks here."}
-        </p>
-      {/each}
-    </div>
-  {/if}
-
-  {#snippet taskNode(task: Task, parentColumnId: string | null, depth: number, recurse: boolean)}
-    {@const n = childCount[task.id] ?? 0}
-    {@const showColumnBadge =
-      depth > 0 && parentColumnId !== null && task.columnId !== parentColumnId}
-    <button
-      type="button"
-      class="card flex flex-row items-baseline gap-3 bg-base-200 px-4 py-2 text-left text-sm hover:bg-base-300"
-      style:margin-left="{depth * 1.5}rem"
-      onclick={() => (editingTaskId = task.id)}
-    >
-      <span class="font-mono text-xs opacity-50">{task.id.slice(-6)}</span>
-      <span class="flex-1">{task.title}</span>
-      {#if task.blockedBy.length > 0}
-        <span
-          class="text-warning"
-          title="Blocked by {task.blockedBy.length} open task{task.blockedBy.length === 1
-            ? ''
-            : 's'}"
-        >
-          <LockSimpleIcon size={14} weight="fill" />
-        </span>
-      {/if}
-      {#each task.tags as tag (tag)}
-        <TagChip name={tag} color={colorByTag[tag] ?? null} />
-      {/each}
-      {#if showColumnBadge}
-        <span class="badge badge-outline badge-sm">{columnNameById[task.columnId] ?? "?"}</span>
-      {/if}
-      {#if n > 0}
-        <span class="badge badge-sm" title="{n} subtask{n === 1 ? '' : 's'}">{n}</span>
-      {/if}
-    </button>
-    {#if recurse}
-      {#each childrenByParent[task.id] ?? [] as child (child.id)}
-        {@render taskNode(child, task.columnId, depth + 1, true)}
-      {/each}
+    {#if view === "kanban"}
+      <KanbanView
+        columns={writState.columns}
+        {visibleTasks}
+        {colorByTag}
+        {childCount}
+        onTaskClick={(id) => (editingTaskId = id)}
+      />
+    {:else}
+      <ListView
+        columns={writState.columns}
+        {visibleTasks}
+        {filtersActive}
+        bind:activeColumnId
+        {childrenByParent}
+        {childCount}
+        {columnNameById}
+        {colorByTag}
+        onTaskClick={(id) => (editingTaskId = id)}
+      />
     {/if}
-  {/snippet}
+  {/if}
 
   {#if editingTask}
     {#key editingTaskId}
