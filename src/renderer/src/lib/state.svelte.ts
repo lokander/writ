@@ -43,7 +43,7 @@ export class WritState {
     const trimmed = input.title.trim();
     if (trimmed.length === 0) return null;
     try {
-      const task = await window.api.tasks.create({ ...input, title: trimmed });
+      const task = await window.api.tasks.create($state.snapshot({ ...input, title: trimmed }));
       this.tasks = [...this.tasks, task];
       if (input.tags && input.tags.length > 0) await this.refreshTags();
       return task;

@@ -2,14 +2,15 @@
   import { onMount } from "svelte";
   import { Notepad, Plus, LockSimple } from "phosphor-svelte";
 
+  import AddTaskModal from "./lib/AddTaskModal.svelte";
   import TaskEditModal from "./lib/TaskEditModal.svelte";
   import { writState } from "./lib/state.svelte";
   import { indexTags, tagStyle } from "./lib/tag-color";
   import type { Task } from "../../shared/types";
 
-  let newTaskTitle = $state("");
   let activeColumnId = $state<string | null>(null);
   let editingTaskId = $state<string | null>(null);
+  let showAddModal = $state(false);
 
   const editingTask = $derived(
     editingTaskId === null ? null : (writState.tasks.find((t) => t.id === editingTaskId) ?? null),
@@ -74,20 +75,11 @@
     writState.loadAll();
   });
 
-  async function handleAdd(): Promise<void> {
-    if (newTaskTitle.trim().length === 0) return;
-    const created = await writState.createTask({ title: newTaskTitle });
-    if (created) {
-      // Jump to whichever column the task landed in (Backlog by default), so
-      // the user sees what they just typed.
-      activeColumnId = created.columnId;
-      newTaskTitle = "";
-    }
-  }
-
-  function onSubmit(event: SubmitEvent): void {
-    event.preventDefault();
-    handleAdd();
+  function onTaskCreated(task: Task): void {
+    // Jump to whichever column the task landed in, so the user sees what
+    // they just authored.
+    activeColumnId = task.columnId;
+    showAddModal = false;
   }
 </script>
 
@@ -99,6 +91,16 @@
       <span class="truncate text-xs opacity-60" title={writState.project.root}>
         {writState.project.root}
       </span>
+    {/if}
+    {#if writState.project && !writState.loading && !writState.error}
+      <button
+        type="button"
+        class="btn btn-primary btn-sm ml-auto"
+        onclick={() => (showAddModal = true)}
+      >
+        <Plus size={14} weight="bold" />
+        New task
+      </button>
     {/if}
   </header>
 
@@ -114,25 +116,6 @@
   {:else if writState.error}
     <div class="alert alert-error m-4">{writState.error}</div>
   {:else}
-    <div class="border-b border-base-300 p-4">
-      <form class="join w-full max-w-2xl" onsubmit={onSubmit}>
-        <input
-          type="text"
-          class="input input-bordered join-item flex-1"
-          placeholder="Add a task"
-          bind:value={newTaskTitle}
-        />
-        <button
-          type="submit"
-          class="btn btn-primary join-item"
-          disabled={newTaskTitle.trim().length === 0}
-        >
-          <Plus size={16} weight="bold" />
-          Add
-        </button>
-      </form>
-    </div>
-
     <div role="tablist" class="tabs tabs-border bg-base-200 px-4">
       {#each writState.columns as col (col.id)}
         {@const count = tasksByColumn[col.id] ?? 0}
@@ -206,5 +189,9 @@
         onSwitch={(id) => (editingTaskId = id)}
       />
     {/key}
+  {/if}
+
+  {#if showAddModal}
+    <AddTaskModal onClose={() => (showAddModal = false)} onCreated={onTaskCreated} />
   {/if}
 </main>
