@@ -13,6 +13,20 @@ import type { NewTask, ProjectInfo, TaskUpdate } from "../shared/types";
 let currentDb: SqliteDb | null = null;
 let currentProject: ProjectInfo | null = null;
 
+// Schemes we're willing to hand off to the OS via shell.openExternal. http(s)
+// covers ordinary URLs; mailto for contact addresses pasted into descriptions.
+// Everything else (file:, javascript:, custom protocols, garbage) is denied.
+const ALLOWED_EXTERNAL_SCHEMES = new Set(["http:", "https:", "mailto:"]);
+
+function isAllowedExternalUrl(url: string): boolean {
+  try {
+    return ALLOWED_EXTERNAL_SCHEMES.has(new URL(url).protocol);
+  } catch {
+    // Malformed URL — refuse.
+    return false;
+  }
+}
+
 function openCurrentProject(): void {
   // Slice 1 of the renderer: resolve from cwd. The packaged `writ` shim will
   // launch with the user's cwd; a richer project picker (writ task 44ZCQS)
@@ -69,9 +83,33 @@ function createWindow(): void {
     mainWindow.show();
   });
 
-  mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url);
+  // External-link handling. markdown-it's link_open override (lib/markdown.ts)
+  // adds target="_blank" rel=noopener to every rendered <a>, so clicks fire
+  // window.open semantics and land here. We hand off to the OS browser and
+  // deny the in-renderer new window.
+  //
+  // will-navigate is the belt-and-suspenders for anything that somehow
+  // bypasses target=_blank (a future bug, an injected link, etc.) — it
+  // catches plain navigation attempts that wouldn't trigger the open-handler.
+  //
+  // Both gates limit themselves to a small allow-list of schemes. javascript:
+  // and data: are already filtered by markdown-it's default validateLink, but
+  // any other source of links should still be safe.
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (isAllowedExternalUrl(url)) {
+      shell.openExternal(url);
+    }
     return { action: "deny" };
+  });
+
+  mainWindow.webContents.on("will-navigate", (event, url) => {
+    // The renderer never navigates internally (single-page app), so any
+    // navigation attempt is an external link click. Block it and route to
+    // the OS browser if the scheme is allowed.
+    event.preventDefault();
+    if (isAllowedExternalUrl(url)) {
+      shell.openExternal(url);
+    }
   });
 
   if (is.dev && process.env["ELECTRON_RENDERER_URL"]) {
