@@ -206,6 +206,7 @@
 
     <label class="form-control mb-3 w-full">
       <span class="label label-text">Title</span>
+      <!-- svelte-ignore a11y_autofocus -->
       <input type="text" class="input input-bordered w-full" bind:value={title} autofocus />
     </label>
 

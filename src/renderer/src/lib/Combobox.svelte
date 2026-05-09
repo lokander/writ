@@ -67,7 +67,7 @@
   // While the dropdown is open, track the input's viewport position so the
   // portaled listbox stays glued to it (modal scroll, window resize, etc).
   $effect(() => {
-    if (!open) return;
+    if (!open) return undefined;
     updateRect();
     window.addEventListener("scroll", updateRect, true);
     window.addEventListener("resize", updateRect);

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import { XIcon, TrashIcon, PlusIcon, PencilSimpleIcon, LockSimpleIcon } from "phosphor-svelte";
 
   import type { Priority, Tag, Task } from "../../../shared/types";
@@ -22,21 +23,25 @@
 
   let mode = $state<"view" | "edit">("view");
 
-  let title = $state(task.title);
-  let description = $state(task.description);
-  let priority = $state<Priority>(task.priority);
-  let parentId = $state<string | null>(task.parentId);
+  // The modal is keyed by `task.id` in the parent (App.svelte), so a switch
+  // to a different task remounts the component and these initializers re-run.
+  // `untrack` tells svelte-check that capturing only the initial value is
+  // intentional, not a missed reactivity bug.
+  let title = $state(untrack(() => task.title));
+  let description = $state(untrack(() => task.description));
+  let priority = $state<Priority>(untrack(() => task.priority));
+  let parentId = $state<string | null>(untrack(() => task.parentId));
   // Each entry is a tag spec — `NAME` or `NAME=COLOR`. We display the parsed
   // name in chips, and pass the raw spec list straight to setTaskTags on save
   // so any `=COLOR` upserts go through.
-  let tagSpecs = $state<string[]>([...task.tags]);
+  let tagSpecs = $state<string[]>(untrack(() => [...task.tags]));
   let newTagName = $state("");
   let useCustomColor = $state(false);
   let newTagColor = $state("#888888");
   let tagError = $state<string | null>(null);
   let saving = $state(false);
 
-  let dependsOnIds = $state<string[]>([...task.dependsOn]);
+  let dependsOnIds = $state<string[]>(untrack(() => [...task.dependsOn]));
 
   let addingSubtask = $state(false);
   let newSubtaskTitle = $state("");
@@ -466,6 +471,7 @@
 
       <label class="form-control mb-3 w-full">
         <span class="label label-text">Title</span>
+        <!-- svelte-ignore a11y_autofocus -->
         <input type="text" class="input input-bordered w-full" bind:value={title} autofocus />
       </label>
 
@@ -692,6 +698,7 @@
         <!-- A nested <form> would be invalid HTML inside the outer form, so this
              is a div with explicit submit-on-Enter handling instead. -->
         <div class="mt-2 flex gap-2">
+          <!-- svelte-ignore a11y_autofocus -->
           <input
             type="text"
             class="input input-bordered input-sm flex-1"
