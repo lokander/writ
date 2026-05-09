@@ -23,6 +23,43 @@ export function getDbPath(rootDir: string): string {
   return join(rootDir, WRIT_DIR, DB_FILE);
 }
 
+const PROJECT_ID_KEY = "project_id";
+const DISPLAY_NAME_KEY = "display_name";
+
+export function getProjectId(db: SqliteDb): string {
+  const row = db.prepare(`SELECT value FROM meta WHERE key = ?`).get(PROJECT_ID_KEY) as
+    | { value: string }
+    | undefined;
+  if (!row) {
+    // Migration v4 guarantees this row exists for any DB that's gone through
+    // applyMigrations. Hitting this branch means a caller skipped migrations.
+    throw new Error("project_id missing — open the DB through applyMigrations()");
+  }
+  return row.value;
+}
+
+export function getDisplayName(db: SqliteDb): string | null {
+  const row = db.prepare(`SELECT value FROM meta WHERE key = ?`).get(DISPLAY_NAME_KEY) as
+    | { value: string }
+    | undefined;
+  return row?.value ?? null;
+}
+
+export function setDisplayName(db: SqliteDb, name: string | null): void {
+  if (name === null) {
+    db.prepare(`DELETE FROM meta WHERE key = ?`).run(DISPLAY_NAME_KEY);
+    return;
+  }
+  const trimmed = name.trim();
+  if (trimmed.length === 0) {
+    throw new Error("Display name cannot be empty. Pass null to clear it.");
+  }
+  db.prepare(
+    `INSERT INTO meta (key, value) VALUES (?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+  ).run(DISPLAY_NAME_KEY, trimmed);
+}
+
 export interface InitResult {
   dbPath: string;
   alreadyInitialized: boolean;

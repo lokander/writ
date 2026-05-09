@@ -78,6 +78,15 @@ const MIGRATIONS: ((db: SqliteDb) => void)[] = [
       max.m + 1000,
     );
   },
+
+  // v4: stable project_id ulid in meta. Survives folder renames so the
+  // per-user registry can key by id rather than path. Backfilled here for
+  // existing projects; fresh DBs go through this same migration on init.
+  (db) => {
+    const exists = db.prepare(`SELECT 1 FROM meta WHERE key = 'project_id'`).get();
+    if (exists) return;
+    db.prepare(`INSERT INTO meta (key, value) VALUES ('project_id', ?)`).run(ulid());
+  },
 ];
 
 function metaTableExists(db: SqliteDb): boolean {

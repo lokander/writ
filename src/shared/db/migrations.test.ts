@@ -25,7 +25,7 @@ describe("applyMigrations", () => {
     const version = db.prepare(`SELECT value FROM meta WHERE key = 'schema_version'`).get() as
       | { value: string }
       | undefined;
-    expect(version?.value).toBe("3");
+    expect(version?.value).toBe("4");
   });
 
   it("is idempotent", () => {
@@ -36,7 +36,7 @@ describe("applyMigrations", () => {
     const version = db.prepare(`SELECT value FROM meta WHERE key = 'schema_version'`).get() as
       | { value: string }
       | undefined;
-    expect(version?.value).toBe("3");
+    expect(version?.value).toBe("4");
   });
 
   it("v3 adds an Archived column to a v2 project that doesn't have one", () => {
@@ -105,6 +105,61 @@ describe("applyMigrations", () => {
     expect(archivedRows).toHaveLength(1);
   });
 
+  it("v4 backfills a project_id on a v3 project that doesn't have one", () => {
+    const db = openDatabase(":memory:");
+    db.exec(`
+      CREATE TABLE meta ( key TEXT PRIMARY KEY, value TEXT NOT NULL );
+      CREATE TABLE columns ( id TEXT PRIMARY KEY, name TEXT NOT NULL, position REAL NOT NULL );
+      CREATE TABLE tasks (
+        id TEXT PRIMARY KEY, parent_id TEXT, column_id TEXT NOT NULL,
+        title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
+        priority INTEGER NOT NULL DEFAULT 2, position REAL NOT NULL,
+        created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+      );
+      CREATE TABLE tags ( id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, color TEXT );
+      CREATE TABLE task_tags ( task_id TEXT, tag_id TEXT, PRIMARY KEY (task_id, tag_id) );
+      CREATE TABLE task_dependencies (
+        task_id TEXT, depends_on_id TEXT, PRIMARY KEY (task_id, depends_on_id)
+      );
+      INSERT INTO meta (key, value) VALUES ('schema_version', '3');
+    `);
+
+    applyMigrations(db);
+
+    const row = db.prepare(`SELECT value FROM meta WHERE key = 'project_id'`).get() as
+      | { value: string }
+      | undefined;
+    expect(row?.value).toMatch(/^[0-9A-HJKMNP-TV-Z]{26}$/);
+  });
+
+  it("v4 preserves an existing project_id rather than overwriting it", () => {
+    const db = openDatabase(":memory:");
+    db.exec(`
+      CREATE TABLE meta ( key TEXT PRIMARY KEY, value TEXT NOT NULL );
+      CREATE TABLE columns ( id TEXT PRIMARY KEY, name TEXT NOT NULL, position REAL NOT NULL );
+      CREATE TABLE tasks (
+        id TEXT PRIMARY KEY, parent_id TEXT, column_id TEXT NOT NULL,
+        title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
+        priority INTEGER NOT NULL DEFAULT 2, position REAL NOT NULL,
+        created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+      );
+      CREATE TABLE tags ( id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, color TEXT );
+      CREATE TABLE task_tags ( task_id TEXT, tag_id TEXT, PRIMARY KEY (task_id, tag_id) );
+      CREATE TABLE task_dependencies (
+        task_id TEXT, depends_on_id TEXT, PRIMARY KEY (task_id, depends_on_id)
+      );
+      INSERT INTO meta (key, value) VALUES ('schema_version', '3');
+      INSERT INTO meta (key, value) VALUES ('project_id', '01ABCDEFGHJKMNPQRSTVWXYZ12');
+    `);
+
+    applyMigrations(db);
+
+    const row = db.prepare(`SELECT value FROM meta WHERE key = 'project_id'`).get() as
+      | { value: string }
+      | undefined;
+    expect(row?.value).toBe("01ABCDEFGHJKMNPQRSTVWXYZ12");
+  });
+
   it("upgrades a v1 database to v2 without losing v1 data", () => {
     const db = openDatabase(":memory:");
     // Apply only v1 by running the first migration directly (simulate an older
@@ -145,6 +200,6 @@ describe("applyMigrations", () => {
     const version = db.prepare(`SELECT value FROM meta WHERE key = 'schema_version'`).get() as
       | { value: string }
       | undefined;
-    expect(version?.value).toBe("3");
+    expect(version?.value).toBe("4");
   });
 });
