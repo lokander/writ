@@ -212,19 +212,43 @@ export function taskCommand(): Command {
           filteredColumns = columns.filter((c) => !doneColumnIds.has(c.id));
         }
 
-        // Group tasks per column with subtasks indented under their parents.
-        // Subtasks follow the parent regardless of the child's own column;
-        // a `[Col]` badge on the line flags any column mismatch. Mirrors the
-        // renderer's tree behavior so the two views stay legible together.
-        const childrenByParent = buildChildrenByParent(visibleTasks);
+        // Narrowing filters (tag/any-tag/ready/blocked) can leave a child in
+        // the visible set without its parent. The hierarchical render would
+        // hide such orphans because it walks down from top-level tasks.
+        // Switch to a flat per-column render whenever a narrowing filter is
+        // on, so every matching task surfaces.
+        const flatRender = Boolean(
+          (opts.tag && opts.tag.length > 0) ||
+          (opts.anyTag && opts.anyTag.length > 0) ||
+          opts.ready ||
+          opts.blocked,
+        );
+
         const columnNameById = new Map(columns.map((c) => [c.id, c.name]));
 
-        for (const col of filteredColumns) {
-          const topInCol = visibleTasks.filter((t) => t.parentId === null && t.columnId === col.id);
-          if (topInCol.length === 0) continue;
-          console.log(`\n${col.name}`);
-          for (const t of topInCol) {
-            renderTaskNode(t, null, 1, childrenByParent, columnNameById);
+        if (flatRender) {
+          for (const col of filteredColumns) {
+            const inCol = visibleTasks.filter((t) => t.columnId === col.id);
+            if (inCol.length === 0) continue;
+            console.log(`\n${col.name}`);
+            for (const t of inCol) {
+              console.log(`  ${formatTaskLine(t)}`);
+            }
+          }
+        } else {
+          // Default: group per column with subtasks indented under their
+          // parents. Subtasks follow the parent regardless of the child's own
+          // column; a `[Col]` badge on the line flags any column mismatch.
+          const childrenByParent = buildChildrenByParent(visibleTasks);
+          for (const col of filteredColumns) {
+            const topInCol = visibleTasks.filter(
+              (t) => t.parentId === null && t.columnId === col.id,
+            );
+            if (topInCol.length === 0) continue;
+            console.log(`\n${col.name}`);
+            for (const t of topInCol) {
+              renderTaskNode(t, null, 1, childrenByParent, columnNameById);
+            }
           }
         }
       } catch (e) {
