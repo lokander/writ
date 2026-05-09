@@ -18,3 +18,17 @@ body,
 #app {
   height: 100%;
 }
+
+/* Native-feel text selection: chrome (titles, badges, buttons) doesn't
+   highlight on drag; only actual content opts back in via select-text. Inputs,
+   textareas, and contenteditable need to allow selection or typing/editing
+   feels broken. Specific opt-ins live next to the markup that should be
+   selectable (modal task title, rendered markdown descriptions). */
+body {
+  user-select: none;
+}
+input,
+textarea,
+[contenteditable="true"] {
+  user-select: text;
+}

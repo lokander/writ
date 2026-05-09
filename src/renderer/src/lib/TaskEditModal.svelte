@@ -231,7 +231,9 @@
   <form class="modal-box w-[70vw] max-w-none" onsubmit={onSubmit}>
     {#if mode === "view"}
       <div class="mb-4 flex items-start justify-between gap-3">
-        <h2 id="task-modal-title" class="text-2xl font-semibold leading-tight">{task.title}</h2>
+        <h2 id="task-modal-title" class="select-text text-2xl font-semibold leading-tight">
+          {task.title}
+        </h2>
         <div class="flex shrink-0 items-baseline gap-2">
           <TaskIdChip id={task.id} />
           <button
@@ -319,7 +321,7 @@
           <!-- markdown.ts strips raw HTML at parse time (html: false), so
                {@html} here is safe — no script/iframe/etc. tags can ride
                through. eslint can't see that, so the rule is suppressed. -->
-          <div class="prose prose-sm max-w-none rounded-lg bg-base-200 px-4 py-3">
+          <div class="prose prose-sm max-w-none select-text rounded-lg bg-base-200 px-4 py-3">
             <!-- eslint-disable-next-line svelte/no-at-html-tags -->
             {@html renderMarkdown(task.description)}
           </div>
