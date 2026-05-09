@@ -6,6 +6,7 @@
   import { PRIORITY_NAMES } from "../../../shared/types";
 
   import { portal } from "./portal";
+  import { PRIORITY_DOT_CLASS } from "./priority-color";
 
   interface Props {
     task: Task;
@@ -229,10 +230,13 @@
       {@const current = task.priority === p}
       <button
         type="button"
-        class="rounded px-3 py-1.5 text-left {current ? 'opacity-50' : 'hover:bg-base-200'}"
+        class="flex items-center gap-2 rounded px-3 py-1.5 text-left {current
+          ? 'opacity-50'
+          : 'hover:bg-base-200'}"
         disabled={current}
         onclick={() => onSetPriority(p)}
       >
+        <span class="size-2 rounded-full {PRIORITY_DOT_CLASS[p]}" aria-hidden="true"></span>
         {PRIORITY_NAMES[p]}
       </button>
     {/each}

@@ -3,6 +3,7 @@
 
   import type { Column, Task } from "../../../shared/types";
   import { writState } from "./state.svelte";
+  import { PRIORITY_BORDER_CLASS } from "./priority-color";
   import TagChip from "./TagChip.svelte";
   import TaskIdChip from "./TaskIdChip.svelte";
 
@@ -100,7 +101,9 @@
     depth > 0 && parentColumnId !== null && task.columnId !== parentColumnId}
   <button
     type="button"
-    class="card flex flex-row items-baseline gap-3 bg-base-200 px-4 py-2 text-left text-sm hover:bg-base-300"
+    class="card flex flex-row items-baseline gap-3 border-l-4 bg-base-200 px-4 py-2 text-left text-sm hover:bg-base-300 {PRIORITY_BORDER_CLASS[
+      task.priority
+    ]}"
     class:bg-base-300={contextMenuTaskId === task.id}
     style:margin-left="{depth * 1.5}rem"
     onclick={() => onTaskClick(task.id)}

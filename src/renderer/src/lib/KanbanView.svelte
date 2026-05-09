@@ -6,6 +6,7 @@
   import { writState } from "./state.svelte";
   import { draggable, dropTarget, monitorForElements } from "./dnd";
   import HiddenDropZone from "./HiddenDropZone.svelte";
+  import { PRIORITY_BORDER_CLASS } from "./priority-color";
   import TagChip from "./TagChip.svelte";
   import TaskIdChip from "./TaskIdChip.svelte";
 
@@ -148,7 +149,9 @@
           {@const parent = task.parentId ? parentOf(task.parentId) : undefined}
           <button
             type="button"
-            class="card flex flex-col gap-1 bg-base-200 px-3 py-2 text-left text-sm hover:bg-base-300"
+            class="card flex flex-col gap-1 border-l-4 bg-base-200 px-3 py-2 text-left text-sm hover:bg-base-300 {PRIORITY_BORDER_CLASS[
+              task.priority
+            ]}"
             class:opacity-40={draggingTaskId === task.id}
             class:bg-base-300={contextMenuTaskId === task.id}
             onclick={() => onTaskClick(task.id)}
