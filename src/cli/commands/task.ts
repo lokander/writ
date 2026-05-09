@@ -63,6 +63,7 @@ interface ListOptions {
   tag?: string[];
   anyTag?: string[];
   showDone?: boolean;
+  showArchived?: boolean;
   ready?: boolean;
   blocked?: boolean;
 }
@@ -162,7 +163,8 @@ export function taskCommand(): Command {
       collectString,
     )
     .option("--show-done", "Include the Done column (hidden by default)")
-    .option("--ready", "Only tasks whose blockers (if any) are all in Done")
+    .option("--show-archived", "Include the Archived column (hidden by default)")
+    .option("--ready", "Only tasks whose blockers (if any) are all in Done or Archived")
     .option("--blocked", "Only tasks with at least one open blocker")
     .action((opts: ListOptions) => {
       withProjectDb(({ db }) => {
@@ -179,16 +181,23 @@ export function taskCommand(): Command {
           return;
         }
 
-        // An explicit --col Done overrides the default hide. If the user asked
-        // for Done specifically, --show-done is implied.
-        const explicitlyAskingForDone = opts.col?.toLowerCase() === "done";
-        const includeDone = opts.showDone || explicitlyAskingForDone;
-        const doneColumnIds = new Set(
-          columns.filter((c) => c.name.toLowerCase() === "done").map((c) => c.id),
+        // An explicit `--col Done` (or `--col Archived`) overrides the
+        // default hide. If the user asked for one of these specifically,
+        // the matching --show-* flag is implied.
+        const colLower = opts.col?.toLowerCase();
+        const includeDone = opts.showDone || colLower === "done";
+        const includeArchived = opts.showArchived || colLower === "archived";
+        const hiddenColumnIds = new Set(
+          columns
+            .filter((c) => {
+              const n = c.name.toLowerCase();
+              if (n === "done" && !includeDone) return true;
+              if (n === "archived" && !includeArchived) return true;
+              return false;
+            })
+            .map((c) => c.id),
         );
-        const visibleTasks = includeDone
-          ? allTasks
-          : allTasks.filter((t) => !doneColumnIds.has(t.columnId));
+        const visibleTasks = allTasks.filter((t) => !hiddenColumnIds.has(t.columnId));
 
         let filteredColumns = columns;
         if (opts.col) {
@@ -197,8 +206,8 @@ export function taskCommand(): Command {
             throw new Error(`Column '${opts.col}' not found. ${availableColumns(db)}`);
           }
           filteredColumns = [col];
-        } else if (!includeDone) {
-          filteredColumns = columns.filter((c) => !doneColumnIds.has(c.id));
+        } else {
+          filteredColumns = columns.filter((c) => !hiddenColumnIds.has(c.id));
         }
 
         // Narrowing filters (tag/any-tag/ready/blocked) can leave a child in

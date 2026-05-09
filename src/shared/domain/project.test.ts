@@ -47,7 +47,7 @@ describe("initProject", () => {
     const db = openDatabase(getDbPath(workdir));
     try {
       const cols = listColumns(db).map((c) => c.name);
-      expect(cols).toEqual(["Backlog", "Todo", "Doing", "Done"]);
+      expect(cols).toEqual(["Backlog", "Todo", "Doing", "Done", "Archived"]);
     } finally {
       db.close();
     }
@@ -65,7 +65,7 @@ describe("initProject", () => {
     const db2 = openDatabase(getDbPath(workdir));
     try {
       const cols = listColumns(db2).map((c) => c.name);
-      expect(cols).toEqual(["Renamed", "Todo", "Doing", "Done"]);
+      expect(cols).toEqual(["Renamed", "Todo", "Doing", "Done", "Archived"]);
     } finally {
       db2.close();
     }

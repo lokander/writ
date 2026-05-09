@@ -6,7 +6,7 @@ import { applyMigrations, openDatabase, type SqliteDb } from "../db";
 export const WRIT_DIR = ".writ";
 export const DB_FILE = "writ.db";
 
-export const DEFAULT_COLUMNS = ["Backlog", "Todo", "Doing", "Done"] as const;
+export const DEFAULT_COLUMNS = ["Backlog", "Todo", "Doing", "Done", "Archived"] as const;
 
 export function findProjectRoot(cwd: string): string | null {
   let dir = cwd;

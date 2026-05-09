@@ -35,11 +35,15 @@ function fromRow(row: TaskRow): Task {
   };
 }
 
-// Returns the set of task ids that are "done" — i.e. live in a column whose
-// name is `Done` (case-insensitive). Used to compute `blockedBy` and
-// `isReady` from the dependency graph.
+// Returns the set of task ids that are "resolved" — i.e. live in a column
+// whose name is `Done` or `Archived` (case-insensitive). Used to compute
+// `blockedBy` and `isReady` from the dependency graph. Archived counts so
+// that archiving a blocker doesn't un-resolve dependents.
 function loadDoneTaskIds(db: SqliteDb): Record<string, true> {
-  const doneCols = listColumns(db).filter((c) => c.name.toLowerCase() === "done");
+  const doneCols = listColumns(db).filter((c) => {
+    const n = c.name.toLowerCase();
+    return n === "done" || n === "archived";
+  });
   if (doneCols.length === 0) return {};
   const placeholders = doneCols.map(() => "?").join(", ");
   const rows = db

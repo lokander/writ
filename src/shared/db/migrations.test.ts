@@ -25,7 +25,7 @@ describe("applyMigrations", () => {
     const version = db.prepare(`SELECT value FROM meta WHERE key = 'schema_version'`).get() as
       | { value: string }
       | undefined;
-    expect(version?.value).toBe("2");
+    expect(version?.value).toBe("3");
   });
 
   it("is idempotent", () => {
@@ -36,7 +36,73 @@ describe("applyMigrations", () => {
     const version = db.prepare(`SELECT value FROM meta WHERE key = 'schema_version'`).get() as
       | { value: string }
       | undefined;
-    expect(version?.value).toBe("2");
+    expect(version?.value).toBe("3");
+  });
+
+  it("v3 adds an Archived column to a v2 project that doesn't have one", () => {
+    const db = openDatabase(":memory:");
+    // Stand up a v2 DB with the canonical four default columns and a task.
+    db.exec(`
+      CREATE TABLE meta ( key TEXT PRIMARY KEY, value TEXT NOT NULL );
+      CREATE TABLE columns ( id TEXT PRIMARY KEY, name TEXT NOT NULL, position REAL NOT NULL );
+      CREATE TABLE tasks (
+        id TEXT PRIMARY KEY, parent_id TEXT, column_id TEXT NOT NULL,
+        title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
+        priority INTEGER NOT NULL DEFAULT 2, position REAL NOT NULL,
+        created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+      );
+      CREATE TABLE tags ( id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, color TEXT );
+      CREATE TABLE task_tags (
+        task_id TEXT, tag_id TEXT, PRIMARY KEY (task_id, tag_id)
+      );
+      CREATE TABLE task_dependencies (
+        task_id TEXT, depends_on_id TEXT,
+        PRIMARY KEY (task_id, depends_on_id)
+      );
+      INSERT INTO meta (key, value) VALUES ('schema_version', '2');
+      INSERT INTO columns (id, name, position) VALUES
+        ('c1', 'Backlog', 1000), ('c2', 'Todo', 2000),
+        ('c3', 'Doing', 3000), ('c4', 'Done', 4000);
+    `);
+
+    applyMigrations(db);
+
+    const cols = db.prepare(`SELECT name, position FROM columns ORDER BY position`).all() as {
+      name: string;
+      position: number;
+    }[];
+    expect(cols.map((c) => c.name)).toEqual(["Backlog", "Todo", "Doing", "Done", "Archived"]);
+    // Archived lands after the existing max (4000) at +1000.
+    expect(cols[4]!.position).toBe(5000);
+  });
+
+  it("v3 is a no-op on a project that already has Archived", () => {
+    const db = openDatabase(":memory:");
+    db.exec(`
+      CREATE TABLE meta ( key TEXT PRIMARY KEY, value TEXT NOT NULL );
+      CREATE TABLE columns ( id TEXT PRIMARY KEY, name TEXT NOT NULL, position REAL NOT NULL );
+      CREATE TABLE tasks (
+        id TEXT PRIMARY KEY, parent_id TEXT, column_id TEXT NOT NULL,
+        title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
+        priority INTEGER NOT NULL DEFAULT 2, position REAL NOT NULL,
+        created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+      );
+      CREATE TABLE tags ( id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, color TEXT );
+      CREATE TABLE task_tags ( task_id TEXT, tag_id TEXT, PRIMARY KEY (task_id, tag_id) );
+      CREATE TABLE task_dependencies (
+        task_id TEXT, depends_on_id TEXT, PRIMARY KEY (task_id, depends_on_id)
+      );
+      INSERT INTO meta (key, value) VALUES ('schema_version', '2');
+      -- pre-existing Archived (case-insensitive name match)
+      INSERT INTO columns (id, name, position) VALUES ('c0', 'archived', 500);
+    `);
+
+    applyMigrations(db);
+
+    const archivedRows = db
+      .prepare(`SELECT name FROM columns WHERE LOWER(name) = 'archived'`)
+      .all() as { name: string }[];
+    expect(archivedRows).toHaveLength(1);
   });
 
   it("upgrades a v1 database to v2 without losing v1 data", () => {
@@ -79,6 +145,6 @@ describe("applyMigrations", () => {
     const version = db.prepare(`SELECT value FROM meta WHERE key = 'schema_version'`).get() as
       | { value: string }
       | undefined;
-    expect(version?.value).toBe("2");
+    expect(version?.value).toBe("3");
   });
 });

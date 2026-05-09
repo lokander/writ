@@ -52,10 +52,10 @@ function registerIpcHandlers(): void {
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
-    width: 1100,
-    height: 750,
-    minWidth: 1100,
-    minHeight: 750,
+    width: 1280,
+    height: 800,
+    minWidth: 1280,
+    minHeight: 800,
     show: false,
     autoHideMenuBar: true,
     ...(process.platform === "linux" ? { icon } : {}),

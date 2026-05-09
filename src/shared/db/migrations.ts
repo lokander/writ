@@ -1,3 +1,5 @@
+import { ulid } from "ulid";
+
 import type { SqliteDb } from "./connection";
 
 const MIGRATIONS: ((db: SqliteDb) => void)[] = [
@@ -53,6 +55,28 @@ const MIGRATIONS: ((db: SqliteDb) => void)[] = [
       );
       CREATE INDEX task_deps_depends_on ON task_dependencies (depends_on_id);
     `);
+  },
+
+  // v3: ensure existing projects have the new "Archived" default column.
+  // For brand-new DBs (columns table is empty), skip — `init.ts`'s
+  // `seedDefaultColumns` will insert it along with the rest at the right
+  // position. For projects that already have columns, append Archived after
+  // whatever's there.
+  (db) => {
+    const colCount = db.prepare(`SELECT COUNT(*) AS c FROM columns`).get() as { c: number };
+    if (colCount.c === 0) return;
+
+    const exists = db.prepare(`SELECT 1 FROM columns WHERE LOWER(name) = 'archived' LIMIT 1`).get();
+    if (exists) return;
+
+    const max = db.prepare(`SELECT COALESCE(MAX(position), 0) AS m FROM columns`).get() as {
+      m: number;
+    };
+    db.prepare(`INSERT INTO columns (id, name, position) VALUES (?, ?, ?)`).run(
+      ulid(),
+      "Archived",
+      max.m + 1000,
+    );
   },
 ];
 
