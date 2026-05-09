@@ -21,7 +21,7 @@ A local-first desktop TODO app that replaces scattered `TODO.md` files. Inspired
 Three things ship as one project:
 
 1. **`writ` CLI** — small Node binary. Subcommands for `init`, `task`, and `writ mcp` (stdio MCP server) today; `register` and bare-`writ` desktop launch are planned (see writ Backlog). Fast startup; never boots Electron unless asked to.
-2. **`writ` desktop app** — Electron + Svelte 5 + TypeScript. Edits tasks via IPC into the same domain layer the CLI uses. Today: list view with column tabs and a view-first edit modal; kanban + drag-drop and aggregating across registered projects are planned.
+2. **`writ` desktop app** — Electron + Svelte 5 + TypeScript. Edits tasks via IPC into the same domain layer the CLI uses. Today: a list view with column tabs and a kanban view with drag-and-drop between columns (toggle in the navbar), sharing a view-first edit modal. Aggregating across registered projects is planned.
 3. **Shared domain library** — schema, migrations, task CRUD, project resolution. Both the CLI and the Electron main process import it. There is no other place that mutates the database.
 
 ```
@@ -152,8 +152,8 @@ CREATE INDEX task_deps_depends_on ON task_dependencies (depends_on_id);
 Notes:
 
 - IDs are ulids (sortable, no central coordination, MCP/CLI/UI can all mint them).
-- Fractional `position` lets us insert between cards without renumbering everything; rebalance on degenerate spreads.
-- `parent_id` is the only subtask mechanism — kanban shows top-level cards; the card surfaces a child-count badge for descendants; the detail view shows the full tree. (A `done/total` split is a possible later refinement.)
+- `position` is a REAL ordered ascending. New cards (and cards moved between columns) get `MAX(position in target column) + 1000`. Fractional inserts at midpoints would let us reorder without renumbering, but that's not implemented — within-column manual reorder was deliberately cut in favor of `Q095` (alternative card sort orders), so there's nothing to rebalance.
+- `parent_id` is the only subtask mechanism — the list view indents children under their parent within a column; the kanban view renders flat per column with a `↳ parent.title` breadcrumb so subtasks keep context without consuming horizontal space. Both views surface a child-count badge on the parent. The detail view shows the full subtree. (A `done/total` split is a possible later refinement.)
 - `task_dependencies` is a strict DAG — a forward-BFS cycle check rejects writes that would create a cycle. Tasks expose derived `dependsOn` / `blockedBy` (the subset of blockers not yet in a column whose name is `Done`, case-insensitive) and `isReady` (true iff every blocker is Done). These are populated by `getTask` / `listTasks` with bulk loaders to avoid N+1.
 - Default columns on `init`: `Backlog`, `Todo`, `Doing`, `Done`. User-editable.
 
@@ -178,7 +178,7 @@ Chromium boots in 1–2s; unacceptable per `writ task add`. The CLI must be a fa
 
 ### Subtasks via self-referential `parent_id`, not a separate table
 
-Simplest model. Recursive queries are well-supported in SQLite. The kanban view never recurses past the top level, so the recursion is bounded to the detail view and the `done/total` rollup.
+Simplest model. Recursive queries are well-supported in SQLite. Recursion is bounded to the list view's hierarchical render and the detail view's subtree; the kanban view renders flat per column, with a parent-title breadcrumb on subtasks for context.
 
 ## Implementation patterns
 

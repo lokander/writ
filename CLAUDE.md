@@ -85,6 +85,8 @@ The CLI and MCP server are Node entry points; do not import Electron APIs from t
 
 - **phosphor-svelte icons use the `Icon` suffix.** Always import the suffixed names (`PlusIcon`, `XIcon`, `LockSimpleIcon`), not the bare ones (`Plus`, `X`, `LockSimple`). The un-suffixed exports still work but are deprecated and will warn in editor tooling. The package README also recommends per-icon imports (`import PlusIcon from "phosphor-svelte/lib/PlusIcon"`) for faster compilation, but we use named imports from the package root for now — fine until compile time becomes a real pain point.
 
+- **Drag-and-drop goes through `lib/dnd.ts`, not pragmatic-drag-and-drop directly.** The wrappers turn Pragmatic's imperative API into idiomatic Svelte actions (`use:draggable={…}`, `use:dropTarget={…}`), with a `current`-closure ref so action params can change after mount without going stale. Extend the wrappers when adding new dnd behavior (closest-edge hints, custom previews, etc.) — don't call Pragmatic directly from components.
+
 ## Domain conventions
 
 - **Tag specs** are `NAME` or `NAME=COLOR`. Names match `^[a-zA-Z0-9][a-zA-Z0-9_-]*$`. Colors accept `#rgb`/`#rrggbb` hex or one of the 147 CSS named colors; both are normalized lowercase. NULL color means "let the renderer hash the name to a DaisyUI palette slot." Color is a tag-level property — once set, it applies wherever the tag appears.

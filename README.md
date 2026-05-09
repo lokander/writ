@@ -2,7 +2,7 @@
 
 A local-first desktop TODO app that replaces the scattered `TODO.md` files most projects accumulate. Tasks live with the code they describe — one SQLite file per project, at `<repo>/.writ/writ.db` — and an MCP server lets Claude Code (and any other MCP-aware agent) read and update the same store the desktop UI shows.
 
-> **Status:** pre-1.0, active development. The CLI and the MCP server are usable today; the desktop UI ships with a tabbed list view, a view-first edit modal, subtasks, tags, and dependencies. Kanban + drag-drop and packaged binaries are still in progress. See [`design.md`](./design.md) for the full architecture.
+> **Status:** pre-1.0, active development. The CLI and the MCP server are usable today; the desktop UI ships with kanban + list views (toggle in the navbar), drag-and-drop between kanban columns, a view-first edit modal, subtasks, tags, dependencies, and tag/state filtering. Packaged binaries are still in progress. See [`design.md`](./design.md) for the full architecture.
 
 ## Features
 
