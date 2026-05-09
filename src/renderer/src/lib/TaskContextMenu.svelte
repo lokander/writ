@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, untrack } from "svelte";
+  import { onMount, tick, untrack } from "svelte";
   import { CaretRightIcon } from "phosphor-svelte";
 
   import type { Column, Priority, Task } from "../../../shared/types";
@@ -35,10 +35,11 @@
   // to it; hovering any other top-level item closes whichever is open.
   let openSubmenu = $state<"priority" | "move" | null>(null);
   let submenuPos = $state<{ left: number; top: number }>({ left: 0, top: 0 });
+  let submenuEl: HTMLDivElement | undefined = $state();
 
   // Estimated submenu width (matches w-52 = 13rem on the main menu). Used
-  // for the "flip left if it'd overflow the viewport" check before we have
-  // a real measurement.
+  // for the initial "flip left if it'd overflow" guess before we have a
+  // real measurement; the post-mount pass below corrects with actuals.
   const SUBMENU_WIDTH = 208;
 
   onMount(() => {
@@ -63,15 +64,39 @@
     menuEl.querySelector<HTMLButtonElement>("button")?.focus();
   });
 
-  function showSubmenu(name: "priority" | "move", trigger: HTMLElement): void {
+  async function showSubmenu(name: "priority" | "move", trigger: HTMLElement): Promise<void> {
     const triggerRect = trigger.getBoundingClientRect();
     const menuRect = menuEl.getBoundingClientRect();
+    const margin = 8;
+
+    // Initial guess: to the right of the main menu, top-aligned with the
+    // trigger row. Horizontal flip if no room on the right.
     let left = menuRect.right + 4;
     if (left + SUBMENU_WIDTH > window.innerWidth) {
       left = menuRect.left - SUBMENU_WIDTH - 4;
     }
-    submenuPos = { left, top: triggerRect.top };
+    let top = triggerRect.top;
+
+    submenuPos = { left, top };
     openSubmenu = name;
+
+    // Wait for the submenu to mount, then clamp using its actual rendered
+    // size. The estimated SUBMENU_WIDTH is fine for "flip left", but the
+    // height varies by item count (4 priorities vs N columns), and a
+    // trigger near the bottom of the viewport would otherwise spill off.
+    await tick();
+    if (!submenuEl) return;
+    const rect = submenuEl.getBoundingClientRect();
+    if (top + rect.height > window.innerHeight) {
+      top = window.innerHeight - rect.height - margin;
+    }
+    if (left + rect.width > window.innerWidth) {
+      left = window.innerWidth - rect.width - margin;
+    }
+    submenuPos = {
+      left: Math.max(margin, left),
+      top: Math.max(margin, top),
+    };
   }
 
   function hideSubmenu(): void {
@@ -192,6 +217,7 @@
      Esc. -->
 {#if openSubmenu === "priority"}
   <div
+    bind:this={submenuEl}
     use:portal
     class="rounded-box fixed z-[1051] flex w-52 flex-col gap-0.5 border border-base-300 bg-base-100 p-1 text-sm shadow-2xl"
     style:left="{submenuPos.left}px"
@@ -213,6 +239,7 @@
   </div>
 {:else if openSubmenu === "move"}
   <div
+    bind:this={submenuEl}
     use:portal
     class="rounded-box fixed z-[1051] flex w-52 flex-col gap-0.5 border border-base-300 bg-base-100 p-1 text-sm shadow-2xl"
     style:left="{submenuPos.left}px"
