@@ -1,8 +1,10 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { LockSimpleIcon } from "phosphor-svelte";
 
   import type { Column, Task } from "../../../shared/types";
   import { writState } from "./state.svelte";
+  import { draggable, dropTarget, monitorForElements } from "./dnd";
   import TagChip from "./TagChip.svelte";
 
   interface Props {
@@ -30,6 +32,50 @@
   function parentOf(parentId: string): Task | undefined {
     return writState.tasks.find((t) => t.id === parentId);
   }
+
+  // Drag visual state. We don't try to be clever with per-element classes;
+  // a single dragging-card id and hovered-column id are enough.
+  let draggingTaskId = $state<string | null>(null);
+  let hoveredColumnId = $state<string | null>(null);
+
+  /** "Append at bottom" position for the target column. Mirrors the domain's
+   *  moveTask: max(positions in target column) + 1000. */
+  function nextPositionInColumn(columnId: string): number {
+    let max = 0;
+    for (const t of writState.tasks) {
+      if (t.columnId === columnId && t.position > max) max = t.position;
+    }
+    return max + 1000;
+  }
+
+  function onCardDrop(taskId: string, targetColumnId: string): void {
+    const task = writState.tasks.find((t) => t.id === taskId);
+    if (!task) return;
+    if (task.columnId === targetColumnId) return; // same-column drop is a no-op
+
+    const newPosition = nextPositionInColumn(targetColumnId);
+
+    // Optimistic local update so the card jumps before the IPC round-trips.
+    // The IPC's response will replace this with the canonical updated row.
+    writState.tasks = writState.tasks.map((t) =>
+      t.id === taskId ? { ...t, columnId: targetColumnId, position: newPosition } : t,
+    );
+
+    writState.updateTask(taskId, { columnId: targetColumnId, position: newPosition });
+  }
+
+  // One global monitor watches every drop in the kanban. Cleaner than
+  // wiring a handler per drop target — Pragmatic recommends this pattern.
+  onMount(() =>
+    monitorForElements({
+      onDrop: ({ source, location }) => {
+        if (source.data.type !== "card") return;
+        const target = location.current.dropTargets[0];
+        if (!target || target.data.type !== "column") return;
+        onCardDrop(source.data.taskId as string, target.data.columnId as string);
+      },
+    }),
+  );
 </script>
 
 <!-- Outer container: occupies remaining vertical space, scrolls horizontally
@@ -45,14 +91,38 @@
       </div>
       <!-- min-h-0 lets this flex child shrink below content size so the
            overflow-y-auto actually engages. -->
-      <div class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">
+      <div
+        class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto rounded-lg p-1 transition-colors {hoveredColumnId ===
+        col.id
+          ? 'bg-primary/10'
+          : ''}"
+        use:dropTarget={{
+          data: { type: "column", columnId: col.id },
+          canDrop: ({ source }) => {
+            // Hide drop feedback when the drag's source column is this
+            // column — the drop would be a no-op.
+            const srcId = source.data.taskId as string | undefined;
+            const src = srcId ? writState.tasks.find((t) => t.id === srcId) : undefined;
+            return !src || src.columnId !== col.id;
+          },
+          onDragEnter: () => (hoveredColumnId = col.id),
+          onDragLeave: () => (hoveredColumnId = null),
+          onDrop: () => (hoveredColumnId = null),
+        }}
+      >
         {#each colTasks as task (task.id)}
           {@const n = childCount[task.id] ?? 0}
           {@const parent = task.parentId ? parentOf(task.parentId) : undefined}
           <button
             type="button"
             class="card flex flex-col gap-1 bg-base-200 px-3 py-2 text-left text-sm hover:bg-base-300"
+            class:opacity-40={draggingTaskId === task.id}
             onclick={() => onTaskClick(task.id)}
+            use:draggable={{
+              data: { type: "card", taskId: task.id },
+              onDragStart: () => (draggingTaskId = task.id),
+              onDrop: () => (draggingTaskId = null),
+            }}
           >
             {#if parent}
               <span class="truncate text-xs opacity-50" title="Subtask of {parent.title}">
