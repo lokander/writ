@@ -79,6 +79,8 @@ The CLI and MCP server are Node entry points; do not import Electron APIs from t
 
 - **`task edit` editor resolution.** `$WRIT_EDITOR` → `$VISUAL` → `$EDITOR`; no fallback to `vi`, no peek at `git config core.editor`. For VS Code the `--wait` flag is critical — without it `code` returns immediately and the command thinks the user is done.
 
+- **phosphor-svelte icons use the `Icon` suffix.** Always import the suffixed names (`PlusIcon`, `XIcon`, `LockSimpleIcon`), not the bare ones (`Plus`, `X`, `LockSimple`). The un-suffixed exports still work but are deprecated and will warn in editor tooling. The package README also recommends per-icon imports (`import PlusIcon from "phosphor-svelte/lib/PlusIcon"`) for faster compilation, but we use named imports from the package root for now — fine until compile time becomes a real pain point.
+
 ## Domain conventions
 
 - **Tag specs** are `NAME` or `NAME=COLOR`. Names match `^[a-zA-Z0-9][a-zA-Z0-9_-]*$`. Colors accept `#rgb`/`#rrggbb` hex or one of the 147 CSS named colors; both are normalized lowercase. NULL color means "let the renderer hash the name to a DaisyUI palette slot." Color is a tag-level property — once set, it applies wherever the tag appears.

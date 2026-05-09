@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { Notepad, Plus, LockSimple } from "phosphor-svelte";
+  import { NotepadIcon, PlusIcon, LockSimpleIcon } from "phosphor-svelte";
 
   import AddTaskModal from "./lib/AddTaskModal.svelte";
   import TaskEditModal from "./lib/TaskEditModal.svelte";
@@ -85,7 +85,7 @@
 
 <main class="flex h-full flex-col bg-base-100 text-base-content">
   <header class="navbar gap-3 border-b border-base-300 bg-base-200 px-4">
-    <Notepad size={24} weight="duotone" />
+    <NotepadIcon size={24} weight="duotone" />
     <h1 class="text-lg font-semibold">writ</h1>
     {#if writState.project}
       <span class="truncate text-xs opacity-60" title={writState.project.root}>
@@ -98,7 +98,7 @@
         class="btn btn-primary btn-sm ml-auto"
         onclick={() => (showAddModal = true)}
       >
-        <Plus size={14} weight="bold" />
+        <PlusIcon size={14} weight="bold" />
         New task
       </button>
     {/if}
@@ -160,7 +160,7 @@
             ? ''
             : 's'}"
         >
-          <LockSimple size={14} weight="fill" />
+          <LockSimpleIcon size={14} weight="fill" />
         </span>
       {/if}
       {#each task.tags as tag (tag)}

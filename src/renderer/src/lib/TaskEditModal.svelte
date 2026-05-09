@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { X, Trash, Plus, PencilSimple, LockSimple } from "phosphor-svelte";
+  import { XIcon, TrashIcon, PlusIcon, PencilSimpleIcon, LockSimpleIcon } from "phosphor-svelte";
 
   import type { Priority, Tag, Task } from "../../../shared/types";
   import { PRIORITY_NAMES } from "../../../shared/types";
@@ -351,7 +351,7 @@
         <div class="flex shrink-0 items-baseline gap-2">
           <span class="font-mono text-xs opacity-50">{task.id.slice(-6)}</span>
           <button type="button" class="btn btn-ghost btn-sm" aria-label="Close" onclick={onClose}>
-            <X size={16} weight="bold" />
+            <XIcon size={16} weight="bold" />
           </button>
         </div>
       </div>
@@ -387,7 +387,7 @@
       {#if task.dependsOn.length > 0}
         <div class="mb-4">
           <div class="label label-text mb-1 flex items-center gap-2 opacity-60">
-            <LockSimple
+            <LockSimpleIcon
               size={14}
               weight="fill"
               class={task.isReady ? "opacity-40" : "text-warning"}
@@ -459,7 +459,7 @@
         <div class="flex shrink-0 items-baseline gap-2">
           <span class="font-mono text-xs opacity-50">{task.id.slice(-6)}</span>
           <button type="button" class="btn btn-ghost btn-sm" aria-label="Close" onclick={onClose}>
-            <X size={16} weight="bold" />
+            <XIcon size={16} weight="bold" />
           </button>
         </div>
       </div>
@@ -497,7 +497,7 @@
                   aria-label="Clear parent"
                   onclick={() => (parentId = null)}
                 >
-                  <X size={12} weight="bold" />
+                  <XIcon size={12} weight="bold" />
                 </button>
               </div>
             {:else}
@@ -538,7 +538,7 @@
                   aria-label="Remove tag"
                   onclick={() => removeTagAt(i)}
                 >
-                  <X size={10} weight="bold" />
+                  <XIcon size={10} weight="bold" />
                 </button>
               </span>
             {/each}
@@ -622,7 +622,7 @@
                   aria-label="Remove blocker"
                   onclick={() => removeDependencyAt(i)}
                 >
-                  <X size={12} weight="bold" />
+                  <XIcon size={12} weight="bold" />
                 </button>
               </div>
             {/each}
@@ -653,7 +653,7 @@
         <span class="label-text font-medium">Subtasks ({children.length})</span>
         {#if !addingSubtask}
           <button type="button" class="btn btn-ghost btn-sm" onclick={() => (addingSubtask = true)}>
-            <Plus size={14} weight="bold" />
+            <PlusIcon size={14} weight="bold" />
             Subtask
           </button>
         {/if}
@@ -719,13 +719,13 @@
 
     <div class="modal-action mt-6 flex items-center justify-between">
       <button type="button" class="btn btn-error btn-outline" onclick={remove}>
-        <Trash size={16} weight="bold" />
+        <TrashIcon size={16} weight="bold" />
         Delete
       </button>
       <div class="flex gap-2">
         {#if mode === "view"}
           <button type="button" class="btn btn-primary" onclick={enterEdit}>
-            <PencilSimple size={16} weight="bold" />
+            <PencilSimpleIcon size={16} weight="bold" />
             Edit
           </button>
         {:else}

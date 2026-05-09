@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { X } from "phosphor-svelte";
+  import { XIcon } from "phosphor-svelte";
 
   import type { Priority, Tag, Task } from "../../../shared/types";
   import { PRIORITY_NAMES } from "../../../shared/types";
@@ -200,7 +200,7 @@
     <div class="mb-4 flex items-baseline justify-between gap-3">
       <h2 id="add-task-modal-title" class="text-lg font-semibold">New task</h2>
       <button type="button" class="btn btn-ghost btn-sm" aria-label="Close" onclick={onClose}>
-        <X size={16} weight="bold" />
+        <XIcon size={16} weight="bold" />
       </button>
     </div>
 
@@ -237,7 +237,7 @@
                 aria-label="Clear parent"
                 onclick={() => (parentId = null)}
               >
-                <X size={12} weight="bold" />
+                <XIcon size={12} weight="bold" />
               </button>
             </div>
           {:else}
@@ -278,7 +278,7 @@
                 aria-label="Remove tag"
                 onclick={() => removeTagAt(i)}
               >
-                <X size={10} weight="bold" />
+                <XIcon size={10} weight="bold" />
               </button>
             </span>
           {/each}
@@ -361,7 +361,7 @@
                 aria-label="Remove blocker"
                 onclick={() => removeDependencyAt(i)}
               >
-                <X size={12} weight="bold" />
+                <XIcon size={12} weight="bold" />
               </button>
             </div>
           {/each}
