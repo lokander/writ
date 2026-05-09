@@ -58,7 +58,6 @@ interface AddOptions {
 
 interface ListOptions {
   col?: string;
-  tree?: boolean;
   tag?: string[];
   anyTag?: string[];
   showDone?: boolean;
@@ -145,7 +144,6 @@ export function taskCommand(): Command {
     .command("list")
     .description("List tasks grouped by column")
     .option("-c, --col <name>", "Only show tasks in the named column")
-    .option("--tree", "Show subtasks indented under their parents (ignores column grouping)")
     .option(
       "--tag <name>",
       "Filter to tasks tagged with this name. Repeatable; multiple --tag flags AND together.",
@@ -178,14 +176,9 @@ export function taskCommand(): Command {
         const doneColumnIds = new Set(
           columns.filter((c) => c.name.toLowerCase() === "done").map((c) => c.id),
         );
-
-        if (opts.tree) {
-          const treeTasks = includeDone
-            ? allTasks
-            : allTasks.filter((t) => !doneColumnIds.has(t.columnId));
-          renderTree(treeTasks);
-          return;
-        }
+        const visibleTasks = includeDone
+          ? allTasks
+          : allTasks.filter((t) => !doneColumnIds.has(t.columnId));
 
         let filteredColumns = columns;
         if (opts.col) {
@@ -198,15 +191,19 @@ export function taskCommand(): Command {
           filteredColumns = columns.filter((c) => !doneColumnIds.has(c.id));
         }
 
-        // Default view: top-level only, grouped by column.
-        const topLevel = allTasks.filter((t) => t.parentId === null);
-        const childCount = countChildrenByParent(allTasks);
+        // Group tasks per column with subtasks indented under their parents.
+        // Subtasks follow the parent regardless of the child's own column;
+        // a `[Col]` badge on the line flags any column mismatch. Mirrors the
+        // renderer's tree behavior so the two views stay legible together.
+        const childrenByParent = buildChildrenByParent(visibleTasks);
+        const columnNameById = new Map(columns.map((c) => [c.id, c.name]));
+
         for (const col of filteredColumns) {
-          const inCol = topLevel.filter((t) => t.columnId === col.id);
-          if (inCol.length === 0) continue;
+          const topInCol = visibleTasks.filter((t) => t.parentId === null && t.columnId === col.id);
+          if (topInCol.length === 0) continue;
           console.log(`\n${col.name}`);
-          for (const t of inCol) {
-            console.log(`  ${formatTaskLine(t, childCount.get(t.id) ?? 0)}`);
+          for (const t of topInCol) {
+            renderTaskNode(t, null, 1, childrenByParent, columnNameById);
           }
         }
       } catch (e) {
@@ -397,40 +394,40 @@ function tagChip(tags: string[]): string {
   return ` [${tags.join(", ")}]`;
 }
 
-function formatTaskLine(t: Task, childCount: number): string {
-  const subs = childCount > 0 ? ` (${childCount} sub)` : "";
-  return `${t.id.slice(-6)}  ${priorityChip(t.priority)}${t.title}${tagChip(t.tags)}${subs}`;
+function formatTaskLine(t: Task): string {
+  return `${t.id.slice(-6)}  ${priorityChip(t.priority)}${t.title}${tagChip(t.tags)}`;
 }
 
-function countChildrenByParent(tasks: Task[]): Map<string, number> {
-  const counts = new Map<string, number>();
+function buildChildrenByParent(tasks: Task[]): Map<string, Task[]> {
+  const map = new Map<string, Task[]>();
   for (const t of tasks) {
-    if (t.parentId) counts.set(t.parentId, (counts.get(t.parentId) ?? 0) + 1);
-  }
-  return counts;
-}
-
-function renderTree(tasks: Task[]): void {
-  const byParent = new Map<string | null, Task[]>();
-  for (const t of tasks) {
-    const key = t.parentId;
-    const list = byParent.get(key) ?? [];
+    if (!t.parentId) continue;
+    const list = map.get(t.parentId) ?? [];
     list.push(t);
-    byParent.set(key, list);
+    map.set(t.parentId, list);
   }
+  return map;
+}
 
-  function walk(parentId: string | null, depth: number): void {
-    const children = byParent.get(parentId) ?? [];
-    for (const t of children) {
-      const indent = "  ".repeat(depth);
-      console.log(
-        `${indent}${t.id.slice(-6)}  ${priorityChip(t.priority)}${t.title}${tagChip(t.tags)}`,
-      );
-      walk(t.id, depth + 1);
-    }
+function renderTaskNode(
+  task: Task,
+  parentColumnId: string | null,
+  depth: number,
+  childrenByParent: Map<string, Task[]>,
+  columnNameById: Map<string, string>,
+): void {
+  const indent = "  ".repeat(depth);
+  const colMismatch =
+    parentColumnId !== null && task.columnId !== parentColumnId
+      ? ` [${columnNameById.get(task.columnId) ?? "?"}]`
+      : "";
+  console.log(
+    `${indent}${task.id.slice(-6)}  ${priorityChip(task.priority)}${task.title}${tagChip(task.tags)}${colMismatch}`,
+  );
+  const children = childrenByParent.get(task.id) ?? [];
+  for (const child of children) {
+    renderTaskNode(child, task.columnId, depth + 1, childrenByParent, columnNameById);
   }
-
-  walk(null, 0);
 }
 
 function availableColumns(db: import("../../shared/db").SqliteDb): string {
@@ -476,7 +473,7 @@ export function renderTaskView(task: Task, columns: Column[], allTasks: Task[]):
     lines.push("");
     lines.push(`Subtasks (${subtasks.length})`);
     for (const sub of subtasks) {
-      lines.push(`  ${formatTaskLine(sub, 0)}`);
+      lines.push(`  ${formatTaskLine(sub)}`);
     }
   }
 
