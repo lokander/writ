@@ -149,6 +149,16 @@
     } catch {
       // ignore
     }
+
+    // Live-reload on window focus regain. Covers the common "tab to terminal,
+    // run a CLI / MCP command, tab back to the app" flow without making the
+    // user manually refresh. Real-time push (writ task 4G1C0D, Phase 7) is
+    // the long-term answer; this is the cheap interim.
+    const onFocus = (): void => {
+      writState.loadAll();
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
   });
 
   function onTaskCreated(task: Task): void {
