@@ -5,6 +5,7 @@
   import type { Column, Task } from "../../../shared/types";
   import { writState } from "./state.svelte";
   import { draggable, dropTarget, monitorForElements } from "./dnd";
+  import HiddenDropZone from "./HiddenDropZone.svelte";
   import TagChip from "./TagChip.svelte";
 
   interface Props {
@@ -34,6 +35,7 @@
   );
 
   const archivedColumn = $derived(columns.find((c) => c.name.toLowerCase() === "archived") ?? null);
+  const backlogColumn = $derived(columns.find((c) => c.name.toLowerCase() === "backlog") ?? null);
 
   function tasksInColumn(colId: string): Task[] {
     return visibleTasks.filter((t) => t.columnId === colId);
@@ -43,21 +45,11 @@
     return writState.tasks.find((t) => t.id === parentId);
   }
 
-  // Drag visual state. We don't try to be clever with per-element classes;
-  // a single dragging-card id and hovered-column id are enough.
+  // Drag visual state. Single dragging-card id (passed to HiddenDropZone so
+  // it can derive its own reveal state) and a hovered-column id for the
+  // regular columns' tint.
   let draggingTaskId = $state<string | null>(null);
   let hoveredColumnId = $state<string | null>(null);
-
-  // True only while a drag is in flight whose source is in the `Done`
-  // column. Drives the Archive drop zone's reveal — invisible otherwise so
-  // users only see it when archiving is actually possible.
-  const draggingFromDone = $derived.by(() => {
-    if (!draggingTaskId) return false;
-    const t = writState.tasks.find((tk) => tk.id === draggingTaskId);
-    if (!t) return false;
-    const col = writState.columns.find((c) => c.id === t.columnId);
-    return col?.name.toLowerCase() === "done";
-  });
 
   /** "Append at bottom" position for the target column. Mirrors the domain's
    *  moveTask: max(positions in target column) + 1000. */
@@ -103,6 +95,12 @@
      when the column count overflows the viewport. overflow-y is hidden so
      each column's body owns its own vertical scrollbar (Trello pattern). -->
 <div class="flex flex-1 gap-4 overflow-x-auto overflow-y-hidden p-4">
+  <!-- Backlog drop zone (left edge): reveals on drag-from-Todo. Demote a
+       card that turned out not to be next-up. -->
+  {#if backlogColumn}
+    <HiddenDropZone target={backlogColumn} fromColumnName="todo" label="Backlog" {draggingTaskId} />
+  {/if}
+
   {#each visibleColumns as col (col.id)}
     {@const colTasks = tasksInColumn(col.id)}
     <div class="flex w-80 shrink-0 flex-col">
@@ -182,36 +180,13 @@
     </div>
   {/each}
 
-  <!-- Archive drop zone: invisible at rest but still occupies layout (so
-       revealing it doesn't shift other columns). flex-1 fills any leftover
-       viewport width on the right edge so the kanban has no awkward gap.
-       Reveals on opacity transition only when the user is dragging a card
-       out of the Done column. -->
+  <!-- Archive drop zone (right edge): reveals on drag-from-Done. -->
   {#if archivedColumn}
-    <div
-      class="flex min-h-0 min-w-16 flex-1 flex-col items-center justify-center rounded-lg border-2 border-dashed transition-opacity {draggingFromDone
-        ? 'opacity-100'
-        : 'opacity-0'} {hoveredColumnId === archivedColumn.id
-        ? 'border-primary bg-primary/10'
-        : 'border-base-300'}"
-      use:dropTarget={{
-        data: { type: "column", columnId: archivedColumn.id },
-        canDrop: ({ source }) => {
-          // Only Done-card sources can land here. Drops from elsewhere are
-          // refused so this zone never lights up during unrelated drags.
-          const srcId = source.data.taskId as string | undefined;
-          if (!srcId) return false;
-          const src = writState.tasks.find((t) => t.id === srcId);
-          if (!src) return false;
-          const srcCol = writState.columns.find((c) => c.id === src.columnId);
-          return srcCol?.name.toLowerCase() === "done";
-        },
-        onDragEnter: () => (hoveredColumnId = archivedColumn.id),
-        onDragLeave: () => (hoveredColumnId = null),
-        onDrop: () => (hoveredColumnId = null),
-      }}
-    >
-      <span class="text-sm opacity-70">Drop to archive</span>
-    </div>
+    <HiddenDropZone
+      target={archivedColumn}
+      fromColumnName="done"
+      label="Archive"
+      {draggingTaskId}
+    />
   {/if}
 </div>
