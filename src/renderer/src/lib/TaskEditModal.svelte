@@ -6,6 +6,7 @@
   import { PRIORITY_NAMES } from "../../../shared/types";
   import { writState } from "./state.svelte";
   import { indexTags } from "./tag-color";
+  import { renderMarkdown } from "./markdown";
   import DependsOnPicker from "./DependsOnPicker.svelte";
   import ParentPicker from "./ParentPicker.svelte";
   import TagChip from "./TagChip.svelte";
@@ -265,8 +266,12 @@
       <div class="mb-6">
         <div class="label label-text mb-1 opacity-60">Description</div>
         {#if task.description.trim().length > 0}
-          <div class="rounded-lg bg-base-200 px-4 py-3 text-sm whitespace-pre-wrap">
-            {task.description}
+          <!-- markdown.ts strips raw HTML at parse time (html: false), so
+               {@html} here is safe — no script/iframe/etc. tags can ride
+               through. eslint can't see that, so the rule is suppressed. -->
+          <div class="prose prose-sm max-w-none rounded-lg bg-base-200 px-4 py-3">
+            <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+            {@html renderMarkdown(task.description)}
           </div>
         {:else}
           <p class="text-sm italic opacity-40">No description.</p>
