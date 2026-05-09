@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { X, Plus } from "phosphor-svelte";
+  import { X } from "phosphor-svelte";
 
-  import type { Priority, Task } from "../../../shared/types";
+  import type { Priority, Tag, Task } from "../../../shared/types";
   import { PRIORITY_NAMES } from "../../../shared/types";
   import {
     parseTagSpec,
@@ -10,6 +10,7 @@
   } from "../../../shared/domain/tag-format";
   import { writState } from "./state.svelte";
   import { indexTags, tagStyle } from "./tag-color";
+  import Combobox from "./Combobox.svelte";
 
   interface Props {
     onClose: () => void;
@@ -30,7 +31,6 @@
   let saving = $state(false);
 
   let dependsOnIds = $state<string[]>([]);
-  let pickedDependsOnId = $state("");
 
   const canSave = $derived(title.trim().length > 0 && !saving);
 
@@ -46,6 +46,10 @@
       .filter((t) => !dependsOnIds.includes(t.id))
       .slice()
       .sort((a, b) => a.title.localeCompare(b.title)),
+  );
+
+  const parentTask = $derived(
+    parentId === null ? null : (writState.tasks.find((t) => t.id === parentId) ?? null),
   );
 
   const columnNameById = $derived.by(() => {
@@ -67,30 +71,51 @@
     }
   }
 
-  const previewChip = $derived.by(() => {
+  // Plain object instead of Set to dodge svelte/prefer-svelte-reactivity (the
+  // value is recomputed on every tagSpecs change anyway, no internal mutation).
+  const attachedTagNames = $derived.by(() => {
+    const names: Record<string, true> = {};
+    for (const spec of tagSpecs) {
+      try {
+        names[parseTagSpec(spec).name] = true;
+      } catch {
+        // ignore — invalid specs can't have been added through the UI
+      }
+    }
+    return names;
+  });
+
+  const availableTags = $derived(writState.tags.filter((t) => !attachedTagNames[t.name]));
+
+  const validatedTagName = $derived.by(() => {
     const trimmed = newTagName.trim();
     if (trimmed.length === 0) return null;
     try {
-      const validName = validateTagName(trimmed);
-      const color = useCustomColor ? newTagColor : (colorByTag[validName] ?? null);
-      const ts = tagStyle(validName, color);
-      return { ...ts, name: validName };
+      return validateTagName(trimmed);
     } catch {
       return null;
     }
   });
 
-  function addTag(): void {
+  const canCreateNewTag = $derived(
+    validatedTagName !== null && !writState.tags.some((t) => t.name === validatedTagName),
+  );
+
+  $effect(() => {
     const trimmed = newTagName.trim();
-    if (trimmed.length === 0) return;
-    let name: string;
-    try {
-      name = validateTagName(trimmed);
-    } catch (e) {
-      tagError = e instanceof TagValidationError ? e.message : String(e);
+    if (trimmed.length === 0) {
+      tagError = null;
       return;
     }
-    const spec = useCustomColor ? `${name}=${newTagColor}` : name;
+    try {
+      validateTagName(trimmed);
+      tagError = null;
+    } catch (e) {
+      tagError = e instanceof TagValidationError ? e.message : String(e);
+    }
+  });
+
+  function dedupTagSpec(spec: string, name: string): void {
     const existingIndex = tagSpecs.findIndex((s) => {
       try {
         return parseTagSpec(s).name === name;
@@ -103,22 +128,33 @@
     } else {
       tagSpecs = [...tagSpecs, spec];
     }
-    newTagName = "";
+  }
+
+  function onPickExistingTag(t: Tag): void {
+    dedupTagSpec(t.name, t.name);
     useCustomColor = false;
     newTagColor = "#888888";
-    tagError = null;
+  }
+
+  function onCreateNewTag(name: string): void {
+    const spec = useCustomColor ? `${name}=${newTagColor}` : name;
+    dedupTagSpec(spec, name);
+    useCustomColor = false;
+    newTagColor = "#888888";
   }
 
   function removeTagAt(index: number): void {
     tagSpecs = tagSpecs.filter((_, i) => i !== index);
   }
 
-  function addDependency(): void {
-    if (!pickedDependsOnId) return;
-    if (!dependsOnIds.includes(pickedDependsOnId)) {
-      dependsOnIds = [...dependsOnIds, pickedDependsOnId];
+  function depItemText(t: Task): string {
+    return `${t.id.slice(-6)} ${t.title}`;
+  }
+
+  function onPickDependency(t: Task): void {
+    if (!dependsOnIds.includes(t.id)) {
+      dependsOnIds = [...dependsOnIds, t.id];
     }
-    pickedDependsOnId = "";
   }
 
   function removeDependencyAt(index: number): void {
@@ -147,13 +183,6 @@
   function onSubmit(event: SubmitEvent): void {
     event.preventDefault();
     save();
-  }
-
-  function onTagNameKeydown(event: KeyboardEvent): void {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      addTag();
-    }
   }
 </script>
 
@@ -196,16 +225,43 @@
         </select>
       </label>
 
-      <label class="form-control w-full max-w-md">
+      <div class="form-control w-full max-w-md">
         <span class="label label-text">Parent</span>
-        <select class="select select-bordered" bind:value={parentId}>
-          <option value={null}>(no parent)</option>
-          {#each parentOptions as p (p.id)}
-            <option value={p.id}>{p.title}</option>
-          {/each}
-        </select>
-      </label>
+        <div class="flex flex-col gap-2">
+          {#if parentTask}
+            <div class="flex items-center gap-2">
+              <span class="badge badge-outline">{parentTask.title}</span>
+              <button
+                type="button"
+                class="opacity-70 hover:opacity-100"
+                aria-label="Clear parent"
+                onclick={() => (parentId = null)}
+              >
+                <X size={12} weight="bold" />
+              </button>
+            </div>
+          {:else}
+            <span class="text-xs italic opacity-50">(no parent)</span>
+          {/if}
+          <Combobox
+            items={parentOptions}
+            itemText={(t) => t.title}
+            itemKey={(t) => t.id}
+            onSelect={(t) => (parentId = t.id)}
+            placeholder="Search tasks…"
+            item={parentRow}
+          />
+        </div>
+      </div>
     </div>
+
+    {#snippet parentRow({ item: t }: { item: Task; active: boolean })}
+      <span class="font-mono text-xs opacity-50">{t.id.slice(-6)}</span>
+      <span class="ml-2">{t.title}</span>
+      <span class="badge badge-outline badge-sm ml-2">
+        {columnNameById[t.columnId] ?? "?"}
+      </span>
+    {/snippet}
 
     <div class="form-control mb-4 w-full">
       <span class="label label-text">Tags</span>
@@ -230,13 +286,19 @@
       {/if}
 
       <div class="flex flex-wrap items-center gap-2">
-        <input
-          type="text"
-          class="input input-bordered input-sm flex-1 min-w-[10rem]"
-          placeholder="Tag name"
-          bind:value={newTagName}
-          onkeydown={onTagNameKeydown}
-        />
+        <div class="min-w-[10rem] flex-1">
+          <Combobox
+            items={availableTags}
+            itemText={(t) => t.name}
+            itemKey={(t) => t.name}
+            onSelect={onPickExistingTag}
+            item={tagRow}
+            extra={canCreateNewTag ? createTagRow : undefined}
+            onExtraSelect={canCreateNewTag ? onCreateNewTag : undefined}
+            bind:value={newTagName}
+            placeholder="Tag name"
+          />
+        </div>
         <label class="label cursor-pointer gap-2 px-2">
           <input type="checkbox" class="checkbox checkbox-sm" bind:checked={useCustomColor} />
           <span class="label-text text-sm">Custom color</span>
@@ -248,30 +310,35 @@
             bind:value={newTagColor}
           />
         {/if}
-        {#if previewChip}
-          <span
-            class="badge badge-sm {previewChip.className}"
-            style:background-color={previewChip.inlineBg}
-            title="Preview"
-          >
-            {previewChip.name}
-          </span>
-        {/if}
-        <button
-          type="button"
-          class="btn btn-primary btn-sm"
-          onclick={addTag}
-          disabled={newTagName.trim().length === 0}
-        >
-          <Plus size={14} weight="bold" />
-          Add
-        </button>
       </div>
 
       {#if tagError}
         <span class="label label-text text-error mt-1 text-xs">{tagError}</span>
       {/if}
     </div>
+
+    {#snippet tagRow({ item: t }: { item: Tag; active: boolean })}
+      {@const ts = tagStyle(t.name, t.color ?? null)}
+      <span class="badge badge-sm {ts.className}" style:background-color={ts.inlineBg}>
+        {t.name}
+      </span>
+    {/snippet}
+
+    {#snippet createTagRow({ query }: { query: string; active: boolean })}
+      {#if validatedTagName !== null}
+        {@const previewColor = useCustomColor
+          ? newTagColor
+          : (colorByTag[validatedTagName] ?? null)}
+        {@const ts = tagStyle(validatedTagName, previewColor)}
+        <span class="opacity-70">Create new tag</span>
+        <span class="badge badge-sm ml-2 {ts.className}" style:background-color={ts.inlineBg}>
+          {validatedTagName}
+        </span>
+      {:else}
+        <span class="italic opacity-60">Type a tag name…</span>
+        <span class="hidden">{query}</span>
+      {/if}
+    {/snippet}
 
     <div class="form-control mb-4 w-full">
       <span class="label label-text">Blocked by</span>
@@ -301,29 +368,23 @@
         </div>
       {/if}
 
-      <div class="flex flex-wrap items-center gap-2">
-        <select
-          class="select select-bordered select-sm flex-1 min-w-[10rem]"
-          bind:value={pickedDependsOnId}
-        >
-          <option value="">(pick a task to depend on)</option>
-          {#each dependencyOptions as opt (opt.id)}
-            <option value={opt.id}>
-              {opt.id.slice(-6)} — {opt.title}
-            </option>
-          {/each}
-        </select>
-        <button
-          type="button"
-          class="btn btn-primary btn-sm"
-          onclick={addDependency}
-          disabled={!pickedDependsOnId}
-        >
-          <Plus size={14} weight="bold" />
-          Add
-        </button>
-      </div>
+      <Combobox
+        items={dependencyOptions}
+        itemText={depItemText}
+        itemKey={(t) => t.id}
+        onSelect={onPickDependency}
+        item={dependencyRow}
+        placeholder="Search tasks…"
+      />
     </div>
+
+    {#snippet dependencyRow({ item: t }: { item: Task; active: boolean })}
+      <span class="font-mono text-xs opacity-50">{t.id.slice(-6)}</span>
+      <span class="ml-2">{t.title}</span>
+      <span class="badge badge-outline badge-sm ml-2">
+        {columnNameById[t.columnId] ?? "?"}
+      </span>
+    {/snippet}
 
     <div class="modal-action mt-6 flex justify-end gap-2">
       <button type="button" class="btn btn-ghost" onclick={onClose}>Cancel</button>
