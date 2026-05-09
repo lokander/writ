@@ -20,8 +20,8 @@ A local-first desktop TODO app that replaces scattered `TODO.md` files. Inspired
 
 Three things ship as one project:
 
-1. **`writ` CLI** — small Node binary. Subcommands for tasks, init, register, and `writ mcp` (stdio MCP server). Fast startup; never boots Electron unless asked to.
-2. **`writ` desktop app** — Electron + Svelte 5 + TypeScript. Aggregates registered projects, provides Kanban + List views, edits tasks via IPC into the same domain layer the CLI uses.
+1. **`writ` CLI** — small Node binary. Subcommands for `init`, `task`, and `writ mcp` (stdio MCP server) today; `register` and bare-`writ` desktop launch are planned (see writ Backlog). Fast startup; never boots Electron unless asked to.
+2. **`writ` desktop app** — Electron + Svelte 5 + TypeScript. Edits tasks via IPC into the same domain layer the CLI uses. Today: list view with column tabs and a view-first edit modal; kanban + drag-drop and aggregating across registered projects are planned.
 3. **Shared domain library** — schema, migrations, task CRUD, project resolution. Both the CLI and the Electron main process import it. There is no other place that mutates the database.
 
 ```
@@ -60,7 +60,7 @@ Three things ship as one project:
 - One database per project, at `<repo>/.writ/writ.db`.
 - Discovered by walking up from cwd, like git finds `.git`. The CLI, the MCP server, and the Electron "open project" flow all use the same `findProjectRoot(cwd)` helper.
 - SQLite is opened in WAL mode so multiple processes (CLI, MCP, Electron) can read and write concurrently without external coordination.
-- A user-level registry at `~/.config/writ/registry.json` lists project paths the desktop app aggregates over. The CLI auto-registers a project on first successful write so the UI just sees it.
+- **Planned:** a user-level registry at `~/.config/writ/registry.json` will list project paths the desktop app aggregates over, and the CLI will auto-register a project on first successful write so the UI just sees it. Until then, the desktop app opens whatever project lives at the cwd it was launched from.
 - WAL sidecars (`writ.db-wal`, `writ.db-shm`) are deleted by SQLite only when the **last** open connection closes. With CLI/MCP/app potentially holding the file concurrently, expect sidecars to linger during dev. This is normal. If we ever want a self-contained `.writ/writ.db` for export/commit, run `PRAGMA wal_checkpoint(TRUNCATE)` and close all our connections — third-party tools holding the file open will still keep the sidecars alive until they release.
 
 Rationale: the user's mental model is TODO.md-per-repo. Files travel with the code; users decide per-repo whether to gitignore `.writ/` or commit it.
@@ -72,8 +72,8 @@ Rationale: the user's mental model is TODO.md-per-repo. Files travel with the co
 - Works without the desktop app running (CI, SSH, headless agents).
 - SQLite WAL handles concurrent writes from multiple sessions safely; "the shared instance" is the file, not a server.
 - Cwd is inherited from the spawning client, so project discovery is free.
-- After every write, the CLI/MCP fires a best-effort notification at `~/.config/writ/app.sock` (Unix socket; named pipe on Windows). If the desktop app is listening, it refreshes immediately. If not, no-op.
-- The desktop app also watches each registered DB with `fs.watch` as a fallback, so correctness never depends on the ping arriving.
+- **Planned:** after every write, the CLI/MCP will fire a best-effort notification at `~/.config/writ/app.sock` (Unix socket; named pipe on Windows). If the desktop app is listening, it refreshes immediately. If not, no-op.
+- **Planned:** the desktop app will also watch each registered DB with `fs.watch` as a fallback, so correctness never depends on the ping arriving. Today the renderer doesn't pick up external writes until it's reopened; an interim "live-reload on focus" tweak is in the backlog ahead of the full ping/watch story.
 
 This is the only architectural choice that took real debate; see [Decision log](#decision-log).
 
@@ -81,8 +81,8 @@ This is the only architectural choice that took real debate; see [Decision log](
 
 The `writ` command users type is a thin Node CLI script. It is _not_ the Electron binary.
 
-- For task/init/register/mcp subcommands: handle in-process with fast Node startup.
-- For `writ` with no subcommand: spawn the Electron app, detaching, and exit. If an instance is already running, send "focus on this project" via the same socket and exit.
+- For `init`/`task`/`mcp` subcommands: handle in-process with fast Node startup. Today via `bin/writ-dev`, which runs under Electron-as-Node.
+- **Planned:** for `writ` with no subcommand: spawn the Electron app, detaching, and exit. If an instance is already running, send "focus on this project" via the same socket and exit.
 
 The Electron binary is an implementation detail; users don't invoke it directly. (How `code` works.)
 
@@ -95,7 +95,7 @@ This costs us a small launcher script in distribution (electron-builder writes i
 - Data: SQLite via `better-sqlite3` (synchronous, fast, perfect for a desktop app's main process and a CLI).
 - MCP: `@modelcontextprotocol/sdk` over stdio.
 - CLI parser: `commander`.
-- Packaging: electron-builder (already configured) for the desktop app + launcher shim. The CLI is a separate `tsup`/`vite`/`esbuild` bundle into `dist/cli/index.js`.
+- Packaging: electron-builder (already configured) for the desktop app. **Planned:** ship the CLI as a separate `tsup`/`vite`/`esbuild` bundle into `dist/cli/index.js` plus a launcher shim on `$PATH`. Today the CLI runs from source via `bin/writ-dev` under Electron-as-Node.
 
 The current CLI and MCP surfaces are the live source of truth — see the [README](./README.md), `writ --help`, and the registered `mcp__writ__*` tools rather than restating them here. Active work is tracked in writ itself (`mcp__writ__list_tasks`).
 
@@ -138,13 +138,23 @@ CREATE TABLE task_tags (
   tag_id  TEXT REFERENCES tags(id)  ON DELETE CASCADE,
   PRIMARY KEY (task_id, tag_id)
 );
+
+-- depends-on graph (added in migration v2)
+CREATE TABLE task_dependencies (
+  task_id        TEXT REFERENCES tasks(id) ON DELETE CASCADE,
+  depends_on_id  TEXT REFERENCES tasks(id) ON DELETE CASCADE,
+  PRIMARY KEY (task_id, depends_on_id),
+  CHECK (task_id != depends_on_id)
+);
+CREATE INDEX task_deps_depends_on ON task_dependencies (depends_on_id);
 ```
 
 Notes:
 
 - IDs are ulids (sortable, no central coordination, MCP/CLI/UI can all mint them).
 - Fractional `position` lets us insert between cards without renumbering everything; rebalance on degenerate spreads.
-- `parent_id` is the only subtask mechanism — kanban shows top-level cards; the card surfaces a `done/total` count for descendants; the detail view shows the full tree.
+- `parent_id` is the only subtask mechanism — kanban shows top-level cards; the card surfaces a child-count badge for descendants; the detail view shows the full tree. (A `done/total` split is a possible later refinement.)
+- `task_dependencies` is a strict DAG — a forward-BFS cycle check rejects writes that would create a cycle. Tasks expose derived `dependsOn` / `blockedBy` (the subset of blockers not yet in a column whose name is `Done`, case-insensitive) and `isReady` (true iff every blocker is Done). These are populated by `getTask` / `listTasks` with bulk loaders to avoid N+1.
 - Default columns on `init`: `Backlog`, `Todo`, `Doing`, `Done`. User-editable.
 
 ## Decision log
