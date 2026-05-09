@@ -170,32 +170,42 @@
 </script>
 
 <main class="flex h-full flex-col bg-base-100 text-base-content">
-  <header class="navbar gap-3 border-b border-base-300 bg-base-200 px-4">
-    <NotepadIcon size={24} weight="duotone" />
-    <h1 class="text-lg font-semibold">writ</h1>
-    {#if writState.project}
-      <span class="truncate text-xs opacity-60" title={writState.project.root}>
-        {writState.project.root}
-      </span>
-    {/if}
-    {#if writState.project && !writState.loading && !writState.error}
-      <div class="join ml-auto">
-        {#each VIEWS as v (v)}
-          <button
-            type="button"
-            class="btn btn-xs join-item"
-            class:btn-primary={view === v}
-            onclick={() => (view = v)}
-          >
-            {v[0].toUpperCase() + v.slice(1)}
-          </button>
-        {/each}
-      </div>
-      <button type="button" class="btn btn-primary btn-sm" onclick={() => (showAddModal = true)}>
-        <PlusIcon size={14} weight="bold" />
-        New task
-      </button>
-    {/if}
+  <header
+    class="grid min-h-16 grid-cols-3 items-center gap-3 border-b border-base-300 bg-base-200 px-4"
+  >
+    <div class="flex min-w-0 items-center gap-3">
+      <NotepadIcon size={24} weight="duotone" />
+      <h1 class="text-lg font-semibold">writ</h1>
+      {#if writState.project}
+        <span class="truncate text-xs opacity-60" title={writState.project.root}>
+          {writState.project.root}
+        </span>
+      {/if}
+    </div>
+    <div class="flex justify-center">
+      {#if writState.project && !writState.loading && !writState.error}
+        <div class="join">
+          {#each VIEWS as v (v)}
+            <button
+              type="button"
+              class="btn btn-primary btn-xs join-item w-16"
+              class:btn-soft={view !== v}
+              onclick={() => (view = v)}
+            >
+              {v[0].toUpperCase() + v.slice(1)}
+            </button>
+          {/each}
+        </div>
+      {/if}
+    </div>
+    <div class="flex justify-end">
+      {#if writState.project && !writState.loading && !writState.error}
+        <button type="button" class="btn btn-primary btn-sm" onclick={() => (showAddModal = true)}>
+          <PlusIcon size={14} weight="bold" />
+          New task
+        </button>
+      {/if}
+    </div>
   </header>
 
   {#if writState.loading}
@@ -213,6 +223,19 @@
     <div
       class="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-base-300 bg-base-200 px-4 py-2"
     >
+      <div class="join">
+        {#each STATE_FILTERS as opt (opt)}
+          <button
+            type="button"
+            class="btn btn-primary btn-xs join-item"
+            class:btn-soft={stateFilter !== opt}
+            onclick={() => (stateFilter = opt)}
+          >
+            {opt === "any" ? "All" : opt[0].toUpperCase() + opt.slice(1)}
+          </button>
+        {/each}
+      </div>
+
       {#if writState.tags.length > 0}
         <div class="flex flex-wrap items-center gap-1">
           {#each writState.tags as tag (tag.name)}
@@ -230,21 +253,8 @@
         </div>
       {/if}
 
-      <div class="join ml-auto">
-        {#each STATE_FILTERS as opt (opt)}
-          <button
-            type="button"
-            class="btn btn-xs join-item"
-            class:btn-primary={stateFilter === opt}
-            onclick={() => (stateFilter = opt)}
-          >
-            {opt === "any" ? "All" : opt[0].toUpperCase() + opt.slice(1)}
-          </button>
-        {/each}
-      </div>
-
       {#if filtersActive}
-        <button type="button" class="btn btn-ghost btn-xs" onclick={clearFilters}>
+        <button type="button" class="btn btn-ghost btn-xs ml-auto" onclick={clearFilters}>
           <XIcon size={12} weight="bold" />
           Clear
         </button>
