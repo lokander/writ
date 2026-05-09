@@ -2,6 +2,7 @@
   import type { Task } from "../../../shared/types";
   import { writState } from "./state.svelte";
   import Combobox from "./Combobox.svelte";
+  import TaskIdChip from "./TaskIdChip.svelte";
   import TaskRefRow from "./TaskRefRow.svelte";
 
   interface Props {
@@ -94,7 +95,7 @@
 </div>
 
 {#snippet dependencyRow({ item: t }: { item: Task; active: boolean })}
-  <span class="font-mono text-xs opacity-50">{t.id.slice(-6)}</span>
+  <TaskIdChip id={t.id} />
   <span class="ml-2">{t.title}</span>
   <span class="badge badge-outline badge-sm ml-2">
     {columnNameById[t.columnId] ?? "?"}

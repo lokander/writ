@@ -4,6 +4,7 @@
   import type { Column, Task } from "../../../shared/types";
   import { writState } from "./state.svelte";
   import TagChip from "./TagChip.svelte";
+  import TaskIdChip from "./TaskIdChip.svelte";
 
   interface Props {
     columns: Column[];
@@ -96,7 +97,7 @@
     style:margin-left="{depth * 1.5}rem"
     onclick={() => onTaskClick(task.id)}
   >
-    <span class="font-mono text-xs opacity-50">{task.id.slice(-6)}</span>
+    <TaskIdChip id={task.id} />
     <span class="flex-1">{task.title}</span>
     {#if task.blockedBy.length > 0}
       <span

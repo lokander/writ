@@ -2,6 +2,7 @@
   import { XIcon } from "phosphor-svelte";
 
   import type { Task } from "../../../shared/types";
+  import TaskIdChip from "./TaskIdChip.svelte";
 
   interface Props {
     task: Task;
@@ -28,7 +29,7 @@
     class:opacity-50={muted}
     onclick={onClick}
   >
-    <span class="font-mono text-xs opacity-50">{task.id.slice(-6)}</span>
+    <TaskIdChip id={task.id} />
     <span class="flex-1" class:line-through={muted}>{task.title}</span>
     <span class="badge badge-outline badge-sm">{columnName}</span>
   </button>
@@ -37,7 +38,7 @@
     class="card flex flex-row items-baseline gap-3 bg-base-200 px-3 py-2 text-sm"
     class:opacity-50={muted}
   >
-    <span class="font-mono text-xs opacity-50">{task.id.slice(-6)}</span>
+    <TaskIdChip id={task.id} />
     <span class="flex-1" class:line-through={muted}>{task.title}</span>
     <span class="badge badge-outline badge-sm">{columnName}</span>
     {#if onRemove}

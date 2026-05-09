@@ -12,6 +12,7 @@
   import ParentPicker from "./ParentPicker.svelte";
   import TagChip from "./TagChip.svelte";
   import TagPicker from "./TagPicker.svelte";
+  import TaskIdChip from "./TaskIdChip.svelte";
   import TaskRefRow from "./TaskRefRow.svelte";
 
   interface Props {
@@ -227,7 +228,7 @@
       <div class="mb-4 flex items-start justify-between gap-3">
         <h2 id="task-modal-title" class="text-2xl font-semibold leading-tight">{task.title}</h2>
         <div class="flex shrink-0 items-baseline gap-2">
-          <span class="font-mono text-xs opacity-50">{task.id.slice(-6)}</span>
+          <TaskIdChip id={task.id} />
           <button
             type="button"
             class="btn btn-ghost btn-sm"
@@ -325,7 +326,7 @@
       <div class="mb-4 flex items-baseline justify-between gap-3">
         <h2 id="task-modal-title" class="text-lg font-semibold">Edit task</h2>
         <div class="flex shrink-0 items-baseline gap-2">
-          <span class="font-mono text-xs opacity-50">{task.id.slice(-6)}</span>
+          <TaskIdChip id={task.id} />
           <button
             type="button"
             class="btn btn-ghost btn-sm"
@@ -387,7 +388,7 @@
               class="card flex flex-row items-baseline gap-3 bg-base-200 px-3 py-2 text-left text-sm hover:bg-base-300"
               onclick={() => tryDiscardingAction(() => onSwitch(child.id))}
             >
-              <span class="font-mono text-xs opacity-50">{child.id.slice(-6)}</span>
+              <TaskIdChip id={child.id} />
               <span class="flex-1">{child.title}</span>
               {#each child.tags as tag (tag)}
                 <TagChip name={tag} color={colorByTag[tag] ?? null} />
