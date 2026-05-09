@@ -10,8 +10,10 @@
     TagValidationError,
   } from "../../../shared/domain/tag-format";
   import { writState } from "./state.svelte";
-  import { indexTags, tagStyle } from "./tag-color";
+  import { indexTags } from "./tag-color";
   import Combobox from "./Combobox.svelte";
+  import TagChip from "./TagChip.svelte";
+  import TaskRefRow from "./TaskRefRow.svelte";
 
   interface Props {
     task: Task;
@@ -155,17 +157,16 @@
 
   const colorByTag = $derived(indexTags(writState.tags));
 
-  // Resolves the display color for a chip. Inline `=COLOR` overrides; else
-  // fall back to whatever's stored on the global tag (NULL → hash slot).
-  function chipStyle(spec: string): { className: string; inlineBg: string | null; name: string } {
+  // Resolves the display name + color for a tag spec. Inline `=COLOR`
+  // overrides; else fall back to whatever's stored on the global tag (NULL
+  // → TagChip's hash slot).
+  function specToNameColor(spec: string): { name: string; color: string | null } {
     try {
       const parsed = parseTagSpec(spec);
-      const color = parsed.color ?? colorByTag[parsed.name] ?? null;
-      const ts = tagStyle(parsed.name, color);
-      return { ...ts, name: parsed.name };
+      return { name: parsed.name, color: parsed.color ?? colorByTag[parsed.name] ?? null };
     } catch {
-      // Shouldn't happen — addTagFromInput validates before pushing.
-      return { className: "", inlineBg: null, name: spec };
+      // Shouldn't happen — addTag validates before pushing.
+      return { name: spec, color: null };
     }
   }
 
@@ -380,10 +381,7 @@
           <span class="flex flex-wrap items-center gap-1">
             <span class="opacity-60">Tags:</span>
             {#each task.tags as tag (tag)}
-              {@const ts = tagStyle(tag, colorByTag[tag] ?? null)}
-              <span class="badge badge-sm {ts.className}" style:background-color={ts.inlineBg}>
-                {tag}
-              </span>
+              <TagChip name={tag} color={colorByTag[tag] ?? null} />
             {/each}
           </span>
         {/if}
@@ -403,22 +401,12 @@
             {#each task.dependsOn as blockerId (blockerId)}
               {@const blocker = writState.tasks.find((t) => t.id === blockerId)}
               {#if blocker}
-                {@const stillBlocking = task.blockedBy.includes(blockerId)}
-                <button
-                  type="button"
-                  class="card flex flex-row items-baseline gap-3 bg-base-200 px-3 py-2 text-left text-sm hover:bg-base-300"
-                  class:opacity-50={!stillBlocking}
-                  onclick={() => onSwitch(blocker.id)}
-                >
-                  <span class="font-mono text-xs opacity-50">{blocker.id.slice(-6)}</span>
-                  <span class="flex-1">
-                    {#if !stillBlocking}<span class="line-through">{blocker.title}</span
-                      >{:else}{blocker.title}{/if}
-                  </span>
-                  <span class="badge badge-outline badge-sm">
-                    {columnNameById[blocker.columnId] ?? "?"}
-                  </span>
-                </button>
+                <TaskRefRow
+                  task={blocker}
+                  columnName={columnNameById[blocker.columnId] ?? "?"}
+                  onClick={() => onSwitch(blocker.id)}
+                  muted={!task.blockedBy.includes(blockerId)}
+                />
               {/if}
             {/each}
           </div>
@@ -432,17 +420,11 @@
           </div>
           <div class="flex flex-col gap-1">
             {#each dependents as dep (dep.id)}
-              <button
-                type="button"
-                class="card flex flex-row items-baseline gap-3 bg-base-200 px-3 py-2 text-left text-sm hover:bg-base-300"
-                onclick={() => onSwitch(dep.id)}
-              >
-                <span class="font-mono text-xs opacity-50">{dep.id.slice(-6)}</span>
-                <span class="flex-1">{dep.title}</span>
-                <span class="badge badge-outline badge-sm">
-                  {columnNameById[dep.columnId] ?? "?"}
-                </span>
-              </button>
+              <TaskRefRow
+                task={dep}
+                columnName={columnNameById[dep.columnId] ?? "?"}
+                onClick={() => onSwitch(dep.id)}
+              />
             {/each}
           </div>
         </div>
@@ -535,18 +517,8 @@
         {#if tagSpecs.length > 0}
           <div class="mb-2 flex flex-wrap gap-1">
             {#each tagSpecs as spec, i (spec + i)}
-              {@const cs = chipStyle(spec)}
-              <span class="badge badge-sm {cs.className}" style:background-color={cs.inlineBg}>
-                {cs.name}
-                <button
-                  type="button"
-                  class="ml-1 opacity-70 hover:opacity-100"
-                  aria-label="Remove tag"
-                  onclick={() => removeTagAt(i)}
-                >
-                  <XIcon size={10} weight="bold" />
-                </button>
-              </span>
+              {@const nc = specToNameColor(spec)}
+              <TagChip name={nc.name} color={nc.color} onRemove={() => removeTagAt(i)} />
             {/each}
           </div>
         {/if}
@@ -584,10 +556,7 @@
       </div>
 
       {#snippet tagRow({ item: t }: { item: Tag; active: boolean })}
-        {@const ts = tagStyle(t.name, t.color ?? null)}
-        <span class="badge badge-sm {ts.className}" style:background-color={ts.inlineBg}>
-          {t.name}
-        </span>
+        <TagChip name={t.name} color={t.color ?? null} />
       {/snippet}
 
       {#snippet createTagRow({ query }: { query: string; active: boolean })}
@@ -595,11 +564,8 @@
           {@const previewColor = useCustomColor
             ? newTagColor
             : (colorByTag[validatedTagName] ?? null)}
-          {@const ts = tagStyle(validatedTagName, previewColor)}
           <span class="opacity-70">Create new tag</span>
-          <span class="badge badge-sm ml-2 {ts.className}" style:background-color={ts.inlineBg}>
-            {validatedTagName}
-          </span>
+          <span class="ml-2"><TagChip name={validatedTagName} color={previewColor} /></span>
         {:else}
           <span class="italic opacity-60">Type a tag name…</span>
           <!-- query is unused here but the snippet API requires it -->
@@ -614,23 +580,13 @@
           <div class="mb-2 flex flex-col gap-1">
             {#each dependsOnIds as depId, i (depId)}
               {@const dep = writState.tasks.find((t) => t.id === depId)}
-              <div class="card flex flex-row items-baseline gap-3 bg-base-200 px-3 py-2 text-sm">
-                <span class="font-mono text-xs opacity-50">{depId.slice(-6)}</span>
-                <span class="flex-1">{dep?.title ?? "(unknown)"}</span>
-                {#if dep}
-                  <span class="badge badge-outline badge-sm">
-                    {columnNameById[dep.columnId] ?? "?"}
-                  </span>
-                {/if}
-                <button
-                  type="button"
-                  class="opacity-70 hover:opacity-100"
-                  aria-label="Remove blocker"
-                  onclick={() => removeDependencyAt(i)}
-                >
-                  <XIcon size={12} weight="bold" />
-                </button>
-              </div>
+              {#if dep}
+                <TaskRefRow
+                  task={dep}
+                  columnName={columnNameById[dep.columnId] ?? "?"}
+                  onRemove={() => removeDependencyAt(i)}
+                />
+              {/if}
             {/each}
           </div>
         {/if}
@@ -677,10 +633,7 @@
               <span class="font-mono text-xs opacity-50">{child.id.slice(-6)}</span>
               <span class="flex-1">{child.title}</span>
               {#each child.tags as tag (tag)}
-                {@const ts = tagStyle(tag, colorByTag[tag] ?? null)}
-                <span class="badge badge-sm {ts.className}" style:background-color={ts.inlineBg}>
-                  {tag}
-                </span>
+                <TagChip name={tag} color={colorByTag[tag] ?? null} />
               {/each}
               {#if showBadge}
                 <span class="badge badge-outline badge-sm">

@@ -9,8 +9,10 @@
     TagValidationError,
   } from "../../../shared/domain/tag-format";
   import { writState } from "./state.svelte";
-  import { indexTags, tagStyle } from "./tag-color";
+  import { indexTags } from "./tag-color";
   import Combobox from "./Combobox.svelte";
+  import TagChip from "./TagChip.svelte";
+  import TaskRefRow from "./TaskRefRow.svelte";
 
   interface Props {
     onClose: () => void;
@@ -60,14 +62,12 @@
 
   const colorByTag = $derived(indexTags(writState.tags));
 
-  function chipStyle(spec: string): { className: string; inlineBg: string | null; name: string } {
+  function specToNameColor(spec: string): { name: string; color: string | null } {
     try {
       const parsed = parseTagSpec(spec);
-      const color = parsed.color ?? colorByTag[parsed.name] ?? null;
-      const ts = tagStyle(parsed.name, color);
-      return { ...ts, name: parsed.name };
+      return { name: parsed.name, color: parsed.color ?? colorByTag[parsed.name] ?? null };
     } catch {
-      return { className: "", inlineBg: null, name: spec };
+      return { name: spec, color: null };
     }
   }
 
@@ -270,18 +270,8 @@
       {#if tagSpecs.length > 0}
         <div class="mb-2 flex flex-wrap gap-1">
           {#each tagSpecs as spec, i (spec + i)}
-            {@const cs = chipStyle(spec)}
-            <span class="badge badge-sm {cs.className}" style:background-color={cs.inlineBg}>
-              {cs.name}
-              <button
-                type="button"
-                class="ml-1 opacity-70 hover:opacity-100"
-                aria-label="Remove tag"
-                onclick={() => removeTagAt(i)}
-              >
-                <XIcon size={10} weight="bold" />
-              </button>
-            </span>
+            {@const nc = specToNameColor(spec)}
+            <TagChip name={nc.name} color={nc.color} onRemove={() => removeTagAt(i)} />
           {/each}
         </div>
       {/if}
@@ -319,10 +309,7 @@
     </div>
 
     {#snippet tagRow({ item: t }: { item: Tag; active: boolean })}
-      {@const ts = tagStyle(t.name, t.color ?? null)}
-      <span class="badge badge-sm {ts.className}" style:background-color={ts.inlineBg}>
-        {t.name}
-      </span>
+      <TagChip name={t.name} color={t.color ?? null} />
     {/snippet}
 
     {#snippet createTagRow({ query }: { query: string; active: boolean })}
@@ -330,11 +317,8 @@
         {@const previewColor = useCustomColor
           ? newTagColor
           : (colorByTag[validatedTagName] ?? null)}
-        {@const ts = tagStyle(validatedTagName, previewColor)}
         <span class="opacity-70">Create new tag</span>
-        <span class="badge badge-sm ml-2 {ts.className}" style:background-color={ts.inlineBg}>
-          {validatedTagName}
-        </span>
+        <span class="ml-2"><TagChip name={validatedTagName} color={previewColor} /></span>
       {:else}
         <span class="italic opacity-60">Type a tag name…</span>
         <span class="hidden">{query}</span>
@@ -348,23 +332,13 @@
         <div class="mb-2 flex flex-col gap-1">
           {#each dependsOnIds as depId, i (depId)}
             {@const dep = writState.tasks.find((t) => t.id === depId)}
-            <div class="card flex flex-row items-baseline gap-3 bg-base-200 px-3 py-2 text-sm">
-              <span class="font-mono text-xs opacity-50">{depId.slice(-6)}</span>
-              <span class="flex-1">{dep?.title ?? "(unknown)"}</span>
-              {#if dep}
-                <span class="badge badge-outline badge-sm">
-                  {columnNameById[dep.columnId] ?? "?"}
-                </span>
-              {/if}
-              <button
-                type="button"
-                class="opacity-70 hover:opacity-100"
-                aria-label="Remove blocker"
-                onclick={() => removeDependencyAt(i)}
-              >
-                <XIcon size={12} weight="bold" />
-              </button>
-            </div>
+            {#if dep}
+              <TaskRefRow
+                task={dep}
+                columnName={columnNameById[dep.columnId] ?? "?"}
+                onRemove={() => removeDependencyAt(i)}
+              />
+            {/if}
           {/each}
         </div>
       {/if}

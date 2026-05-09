@@ -3,9 +3,10 @@
   import { NotepadIcon, PlusIcon, LockSimpleIcon } from "phosphor-svelte";
 
   import AddTaskModal from "./lib/AddTaskModal.svelte";
+  import TagChip from "./lib/TagChip.svelte";
   import TaskEditModal from "./lib/TaskEditModal.svelte";
   import { writState } from "./lib/state.svelte";
-  import { indexTags, tagStyle } from "./lib/tag-color";
+  import { indexTags } from "./lib/tag-color";
   import type { Task } from "../../shared/types";
 
   let activeColumnId = $state<string | null>(null);
@@ -164,10 +165,7 @@
         </span>
       {/if}
       {#each task.tags as tag (tag)}
-        {@const ts = tagStyle(tag, colorByTag[tag] ?? null)}
-        <span class="badge badge-sm {ts.className}" style:background-color={ts.inlineBg}>
-          {tag}
-        </span>
+        <TagChip name={tag} color={colorByTag[tag] ?? null} />
       {/each}
       {#if showColumnBadge}
         <span class="badge badge-outline badge-sm">{columnNameById[task.columnId] ?? "?"}</span>
