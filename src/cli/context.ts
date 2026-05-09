@@ -20,6 +20,21 @@ export function resolveProjectDb(cwd: string = process.cwd()): ResolvedProject {
   return { db, root };
 }
 
+/** Resolves the project DB, runs `fn`, and always closes the DB. Any thrown
+ *  error is fed to `handleCliError` (which exits the process), so callers can
+ *  write a single happy-path block instead of repeating the open/try/finally
+ *  dance per command. */
+export function withProjectDb<T>(fn: (project: ResolvedProject) => T): T {
+  const project = resolveProjectDb();
+  try {
+    return fn(project);
+  } catch (e) {
+    handleCliError(e);
+  } finally {
+    project.db.close();
+  }
+}
+
 export function handleCliError(error: unknown): never {
   if (error instanceof AmbiguousTaskError) {
     process.stderr.write(`${error.message}:\n`);

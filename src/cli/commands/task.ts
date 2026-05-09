@@ -16,7 +16,7 @@ import {
 } from "../../shared/domain/task-format";
 import { PRIORITY_NAMES, type Priority, type Task } from "../../shared/types";
 import type { Column } from "../../shared/types";
-import { handleCliError, resolveProjectDb } from "../context";
+import { withProjectDb } from "../context";
 import { cleanupTempFile, editInExternalEditor } from "../editor";
 
 const PRIORITY_INPUT: Record<string, Priority> = {
@@ -73,8 +73,7 @@ interface EditOptions {
 }
 
 function viewTask(idInput: string): void {
-  const { db } = resolveProjectDb();
-  try {
+  withProjectDb(({ db }) => {
     const resolved = resolveTaskId(db, idInput);
     const columns = listColumns(db);
     const allTasks = listTasks(db);
@@ -83,11 +82,7 @@ function viewTask(idInput: string): void {
     // listTasks result so renderTaskView sees real tags / blockers / etc.
     const task = allTasks.find((t) => t.id === resolved.id) ?? resolved;
     process.stdout.write(renderTaskView(task, columns, allTasks) + "\n");
-  } catch (e) {
-    handleCliError(e);
-  } finally {
-    db.close();
-  }
+  });
 }
 
 export function taskCommand(): Command {
@@ -122,8 +117,7 @@ export function taskCommand(): Command {
       collectString,
     )
     .action((title: string, opts: AddOptions) => {
-      const { db } = resolveProjectDb();
-      try {
+      withProjectDb(({ db }) => {
         let columnId: string | undefined;
         if (opts.col) {
           const col = getColumnByName(db, opts.col);
@@ -150,11 +144,7 @@ export function taskCommand(): Command {
           dependsOn,
         });
         console.log(`Created ${task.id.slice(-6)}  ${task.title}`);
-      } catch (e) {
-        handleCliError(e);
-      } finally {
-        db.close();
-      }
+      });
     });
 
   cmd
@@ -175,8 +165,7 @@ export function taskCommand(): Command {
     .option("--ready", "Only tasks whose blockers (if any) are all in Done")
     .option("--blocked", "Only tasks with at least one open blocker")
     .action((opts: ListOptions) => {
-      const { db } = resolveProjectDb();
-      try {
+      withProjectDb(({ db }) => {
         const columns = listColumns(db);
         const allTasks = listTasks(db, {
           tags: opts.tag,
@@ -251,19 +240,14 @@ export function taskCommand(): Command {
             }
           }
         }
-      } catch (e) {
-        handleCliError(e);
-      } finally {
-        db.close();
-      }
+      });
     });
 
   cmd
     .command("move <id> <column>")
     .description("Move a task to a different column (case-insensitive)")
     .action((idInput: string, columnName: string) => {
-      const { db } = resolveProjectDb();
-      try {
+      withProjectDb(({ db }) => {
         const task = resolveTaskId(db, idInput);
         const col = getColumnByName(db, columnName);
         if (!col) {
@@ -271,27 +255,18 @@ export function taskCommand(): Command {
         }
         moveTask(db, task.id, col.id);
         console.log(`Moved ${task.id.slice(-6)}  ${task.title}  →  ${col.name}`);
-      } catch (e) {
-        handleCliError(e);
-      } finally {
-        db.close();
-      }
+      });
     });
 
   cmd
     .command("rm <id>")
     .description("Delete a task and its subtasks")
     .action((idInput: string) => {
-      const { db } = resolveProjectDb();
-      try {
+      withProjectDb(({ db }) => {
         const task = resolveTaskId(db, idInput);
         deleteTask(db, task.id);
         console.log(`Deleted ${task.id.slice(-6)}  ${task.title}`);
-      } catch (e) {
-        handleCliError(e);
-      } finally {
-        db.close();
-      }
+      });
     });
 
   cmd
@@ -313,8 +288,7 @@ export function taskCommand(): Command {
       collectString,
     )
     .action((idInput: string, opts: EditOptions) => {
-      const { db } = resolveProjectDb();
-      try {
+      withProjectDb(({ db }) => {
         const task = resolveTaskId(db, idInput);
 
         // Direct flag mode: `--tag X --tag Y` (or `--depends-on …`) replaces
@@ -336,11 +310,7 @@ export function taskCommand(): Command {
         // tags / depends_on (resolveTaskId returns a stub).
         const hydrated = getTask(db, task.id) ?? task;
         editTaskViaEditor(db, hydrated);
-      } catch (e) {
-        handleCliError(e);
-      } finally {
-        db.close();
-      }
+      });
     });
 
   return cmd;
