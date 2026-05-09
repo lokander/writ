@@ -2,17 +2,14 @@
   import { untrack } from "svelte";
   import { XIcon, TrashIcon, PlusIcon, PencilSimpleIcon, LockSimpleIcon } from "phosphor-svelte";
 
-  import type { Priority, Tag, Task } from "../../../shared/types";
+  import type { Priority, Task } from "../../../shared/types";
   import { PRIORITY_NAMES } from "../../../shared/types";
-  import {
-    parseTagSpec,
-    validateTagName,
-    TagValidationError,
-  } from "../../../shared/domain/tag-format";
   import { writState } from "./state.svelte";
   import { indexTags } from "./tag-color";
-  import Combobox from "./Combobox.svelte";
+  import DependsOnPicker from "./DependsOnPicker.svelte";
+  import ParentPicker from "./ParentPicker.svelte";
   import TagChip from "./TagChip.svelte";
+  import TagPicker from "./TagPicker.svelte";
   import TaskRefRow from "./TaskRefRow.svelte";
 
   interface Props {
@@ -33,18 +30,10 @@
   let description = $state(untrack(() => task.description));
   let priority = $state<Priority>(untrack(() => task.priority));
   let parentId = $state<string | null>(untrack(() => task.parentId));
-  // Each entry is a tag spec — `NAME` or `NAME=COLOR`. We display the parsed
-  // name in chips, and pass the raw spec list straight to setTaskTags on save
-  // so any `=COLOR` upserts go through.
   let tagSpecs = $state<string[]>(untrack(() => [...task.tags]));
-  let newTagName = $state("");
-  let useCustomColor = $state(false);
-  let newTagColor = $state("#888888");
-  let tagError = $state<string | null>(null);
-  let saving = $state(false);
-
   let dependsOnIds = $state<string[]>(untrack(() => [...task.dependsOn]));
 
+  let saving = $state(false);
   let addingSubtask = $state(false);
   let newSubtaskTitle = $state("");
 
@@ -73,7 +62,7 @@
 
   const canSave = $derived(dirty && title.trim().length > 0 && !saving);
 
-  // Self + all descendants — must be excluded from the parent picker so the
+  // Self + all descendants — passed to the parent picker as excludeIds so the
   // user can't make a cycle.
   const descendantIds = $derived.by(() => {
     const set: Record<string, true> = { [task.id]: true };
@@ -90,63 +79,11 @@
     return set;
   });
 
-  // BFS through depends-on edges from `candidateId` to see whether it would
-  // (transitively) reach the current task. If so, attaching the candidate as
-  // a blocker would create a cycle. Mirrors the cycle check in the domain
-  // layer (which the user gets at save time anyway, but doing it client-side
-  // lets us hide invalid candidates from the picker).
-  function wouldCycle(candidateId: string): boolean {
-    if (candidateId === task.id) return true;
-    const visited: Record<string, true> = {};
-    const queue: string[] = [candidateId];
-    while (queue.length > 0) {
-      const cur = queue.shift()!;
-      if (cur === task.id) return true;
-      if (visited[cur]) continue;
-      visited[cur] = true;
-      const row = writState.tasks.find((t) => t.id === cur);
-      if (!row) continue;
-      for (const depId of row.dependsOn) queue.push(depId);
-    }
-    return false;
-  }
-
-  const dependencyOptions = $derived(
-    writState.tasks
-      .filter((t) => t.id !== task.id)
-      .filter((t) => !dependsOnIds.includes(t.id))
-      .filter((t) => !wouldCycle(t.id))
-      .slice()
-      .sort((a, b) => a.title.localeCompare(b.title)),
-  );
-
-  const dependents = $derived(writState.tasks.filter((t) => t.dependsOn.includes(task.id)));
-
-  function depItemText(t: Task): string {
-    return `${t.id.slice(-6)} ${t.title}`;
-  }
-
-  function onPickDependency(t: Task): void {
-    if (!dependsOnIds.includes(t.id)) {
-      dependsOnIds = [...dependsOnIds, t.id];
-    }
-  }
-
-  function removeDependencyAt(index: number): void {
-    dependsOnIds = dependsOnIds.filter((_, i) => i !== index);
-  }
-
-  const parentOptions = $derived(
-    writState.tasks
-      .filter((t) => !descendantIds[t.id])
-      .slice()
-      .sort((a, b) => a.title.localeCompare(b.title)),
-  );
-
   const parentTask = $derived(
     task.parentId === null ? null : (writState.tasks.find((t) => t.id === task.parentId) ?? null),
   );
 
+  const dependents = $derived(writState.tasks.filter((t) => t.dependsOn.includes(task.id)));
   const children = $derived(writState.tasks.filter((t) => t.parentId === task.id));
 
   const columnNameById = $derived.by(() => {
@@ -157,123 +94,18 @@
 
   const colorByTag = $derived(indexTags(writState.tags));
 
-  // Resolves the display name + color for a tag spec. Inline `=COLOR`
-  // overrides; else fall back to whatever's stored on the global tag (NULL
-  // → TagChip's hash slot).
-  function specToNameColor(spec: string): { name: string; color: string | null } {
-    try {
-      const parsed = parseTagSpec(spec);
-      return { name: parsed.name, color: parsed.color ?? colorByTag[parsed.name] ?? null };
-    } catch {
-      // Shouldn't happen — addTag validates before pushing.
-      return { name: spec, color: null };
-    }
-  }
-
   function enterEdit(): void {
     title = task.title;
     description = task.description;
     priority = task.priority;
     parentId = task.parentId;
     tagSpecs = [...task.tags];
-    newTagName = "";
-    useCustomColor = false;
-    newTagColor = "#888888";
-    tagError = null;
     dependsOnIds = [...task.dependsOn];
     mode = "edit";
   }
 
   function cancelEdit(): void {
     mode = "view";
-  }
-
-  // Names of tags currently attached to the in-progress edit. Used to filter
-  // the combobox so the user doesn't see tags they've already added. Plain
-  // object instead of Set to dodge svelte/prefer-svelte-reactivity (the value
-  // is recomputed on every tagSpecs change anyway, no internal mutation).
-  const attachedTagNames = $derived.by(() => {
-    const names: Record<string, true> = {};
-    for (const spec of tagSpecs) {
-      try {
-        names[parseTagSpec(spec).name] = true;
-      } catch {
-        // ignore — invalid specs can't have been added through the UI
-      }
-    }
-    return names;
-  });
-
-  const availableTags = $derived(writState.tags.filter((t) => !attachedTagNames[t.name]));
-
-  // The current input, validated to a tag name. null when empty or invalid.
-  const validatedTagName = $derived.by(() => {
-    const trimmed = newTagName.trim();
-    if (trimmed.length === 0) return null;
-    try {
-      return validateTagName(trimmed);
-    } catch {
-      return null;
-    }
-  });
-
-  // Show "Create new tag X" only when input is valid AND no existing tag has
-  // exactly that name. Existing tags surface in the dropdown items instead.
-  const canCreateNewTag = $derived(
-    validatedTagName !== null && !writState.tags.some((t) => t.name === validatedTagName),
-  );
-
-  // Reflect tag-name validation as an inline error.
-  $effect(() => {
-    const trimmed = newTagName.trim();
-    if (trimmed.length === 0) {
-      tagError = null;
-      return;
-    }
-    try {
-      validateTagName(trimmed);
-      tagError = null;
-    } catch (e) {
-      tagError = e instanceof TagValidationError ? e.message : String(e);
-    }
-  });
-
-  function dedupTagSpec(spec: string, name: string): void {
-    // Replace any existing entry resolving to the same name so picking again
-    // (e.g. with a color override) overwrites the older spec rather than
-    // double-adding.
-    const existingIndex = tagSpecs.findIndex((s) => {
-      try {
-        return parseTagSpec(s).name === name;
-      } catch {
-        return false;
-      }
-    });
-    if (existingIndex >= 0) {
-      tagSpecs = [...tagSpecs.slice(0, existingIndex), spec, ...tagSpecs.slice(existingIndex + 1)];
-    } else {
-      tagSpecs = [...tagSpecs, spec];
-    }
-  }
-
-  function onPickExistingTag(t: Tag): void {
-    dedupTagSpec(t.name, t.name);
-    // Existing tag picked: custom color toggle doesn't apply (color management
-    // for existing tags is a separate flow). Reset for a clean next pick.
-    useCustomColor = false;
-    newTagColor = "#888888";
-  }
-
-  function onCreateNewTag(name: string): void {
-    // canCreateNewTag was true to enable this code path, so name validates.
-    const spec = useCustomColor ? `${name}=${newTagColor}` : name;
-    dedupTagSpec(spec, name);
-    useCustomColor = false;
-    newTagColor = "#888888";
-  }
-
-  function removeTagAt(index: number): void {
-    tagSpecs = tagSpecs.filter((_, i) => i !== index);
   }
 
   async function save(): Promise<void> {
@@ -473,141 +305,12 @@
           </select>
         </label>
 
-        <div class="form-control w-full max-w-md">
-          <span class="label label-text">Parent</span>
-          <div class="flex flex-col gap-2">
-            {#if parentTask}
-              <div class="flex items-center gap-2">
-                <span class="badge badge-outline">{parentTask.title}</span>
-                <button
-                  type="button"
-                  class="opacity-70 hover:opacity-100"
-                  aria-label="Clear parent"
-                  onclick={() => (parentId = null)}
-                >
-                  <XIcon size={12} weight="bold" />
-                </button>
-              </div>
-            {:else}
-              <span class="text-xs italic opacity-50">(no parent)</span>
-            {/if}
-            <Combobox
-              items={parentOptions}
-              itemText={(t) => t.title}
-              itemKey={(t) => t.id}
-              onSelect={(t) => (parentId = t.id)}
-              placeholder="Search tasks…"
-              item={parentRow}
-            />
-          </div>
-        </div>
+        <ParentPicker bind:parentId excludeIds={descendantIds} />
       </div>
 
-      {#snippet parentRow({ item: t }: { item: Task; active: boolean })}
-        <span class="font-mono text-xs opacity-50">{t.id.slice(-6)}</span>
-        <span class="ml-2">{t.title}</span>
-        <span class="badge badge-outline badge-sm ml-2">
-          {columnNameById[t.columnId] ?? "?"}
-        </span>
-      {/snippet}
+      <TagPicker bind:tagSpecs />
 
-      <div class="form-control mb-4 w-full">
-        <span class="label label-text">Tags</span>
-
-        {#if tagSpecs.length > 0}
-          <div class="mb-2 flex flex-wrap gap-1">
-            {#each tagSpecs as spec, i (spec + i)}
-              {@const nc = specToNameColor(spec)}
-              <TagChip name={nc.name} color={nc.color} onRemove={() => removeTagAt(i)} />
-            {/each}
-          </div>
-        {/if}
-
-        <div class="flex flex-wrap items-center gap-2">
-          <div class="min-w-[10rem] flex-1">
-            <Combobox
-              items={availableTags}
-              itemText={(t) => t.name}
-              itemKey={(t) => t.name}
-              onSelect={onPickExistingTag}
-              item={tagRow}
-              extra={canCreateNewTag ? createTagRow : undefined}
-              onExtraSelect={canCreateNewTag ? onCreateNewTag : undefined}
-              bind:value={newTagName}
-              placeholder="Tag name"
-            />
-          </div>
-          <label class="label cursor-pointer gap-2 px-2">
-            <input type="checkbox" class="checkbox checkbox-sm" bind:checked={useCustomColor} />
-            <span class="label-text text-sm">Custom color</span>
-          </label>
-          {#if useCustomColor}
-            <input
-              type="color"
-              class="h-8 w-12 cursor-pointer rounded border border-base-300 bg-base-200"
-              bind:value={newTagColor}
-            />
-          {/if}
-        </div>
-
-        {#if tagError}
-          <span class="label label-text text-error mt-1 text-xs">{tagError}</span>
-        {/if}
-      </div>
-
-      {#snippet tagRow({ item: t }: { item: Tag; active: boolean })}
-        <TagChip name={t.name} color={t.color ?? null} />
-      {/snippet}
-
-      {#snippet createTagRow({ query }: { query: string; active: boolean })}
-        {#if validatedTagName !== null}
-          {@const previewColor = useCustomColor
-            ? newTagColor
-            : (colorByTag[validatedTagName] ?? null)}
-          <span class="opacity-70">Create new tag</span>
-          <span class="ml-2"><TagChip name={validatedTagName} color={previewColor} /></span>
-        {:else}
-          <span class="italic opacity-60">Type a tag name…</span>
-          <!-- query is unused here but the snippet API requires it -->
-          <span class="hidden">{query}</span>
-        {/if}
-      {/snippet}
-
-      <div class="form-control mb-4 w-full">
-        <span class="label label-text">Blocked by</span>
-
-        {#if dependsOnIds.length > 0}
-          <div class="mb-2 flex flex-col gap-1">
-            {#each dependsOnIds as depId, i (depId)}
-              {@const dep = writState.tasks.find((t) => t.id === depId)}
-              {#if dep}
-                <TaskRefRow
-                  task={dep}
-                  columnName={columnNameById[dep.columnId] ?? "?"}
-                  onRemove={() => removeDependencyAt(i)}
-                />
-              {/if}
-            {/each}
-          </div>
-        {/if}
-
-        <Combobox
-          items={dependencyOptions}
-          itemText={depItemText}
-          itemKey={(t) => t.id}
-          onSelect={onPickDependency}
-          item={dependencyRow}
-          placeholder="Search tasks…"
-        />
-      </div>
-
-      {#snippet dependencyRow({ item: t }: { item: Task; active: boolean })}
-        <span class="font-mono text-xs opacity-50">{t.id.slice(-6)}</span>
-        <span class="ml-2">{t.title}</span>
-        <span class="badge badge-outline badge-sm ml-2">
-          {columnNameById[t.columnId] ?? "?"}
-        </span>
-      {/snippet}
+      <DependsOnPicker bind:dependsOnIds taskIdForCycleCheck={task.id} />
     {/if}
 
     <div class="mb-4">
