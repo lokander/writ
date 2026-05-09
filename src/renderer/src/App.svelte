@@ -3,13 +3,15 @@
   import { NotepadIcon, PlusIcon, XIcon } from "phosphor-svelte";
 
   import AddTaskModal from "./lib/AddTaskModal.svelte";
+  import ConfirmDialog from "./lib/ConfirmDialog.svelte";
   import KanbanView from "./lib/KanbanView.svelte";
   import ListView from "./lib/ListView.svelte";
   import TagChip from "./lib/TagChip.svelte";
+  import TaskContextMenu from "./lib/TaskContextMenu.svelte";
   import TaskEditModal from "./lib/TaskEditModal.svelte";
   import { writState } from "./lib/state.svelte";
   import { indexTags } from "./lib/tag-color";
-  import type { Task } from "../../shared/types";
+  import type { Priority, Task } from "../../shared/types";
 
   type StateFilter = "any" | "ready" | "blocked";
   type View = "kanban" | "list";
@@ -20,8 +22,33 @@
 
   let activeColumnId = $state<string | null>(null);
   let editingTaskId = $state<string | null>(null);
+  // Captured fresh each time the modal opens; the modal reads it once on
+  // mount via untrack. Card clicks land in "view"; context-menu Edit lands
+  // in "edit".
+  let editingInitialMode = $state<"view" | "edit">("view");
   let showAddModal = $state(false);
   let view = $state<View>("kanban");
+
+  // Right-click context menu. Holds the target task and the cursor position
+  // captured at right-click time. Cleared on action / outside-click / Esc.
+  let contextMenuFor = $state<{ taskId: string; x: number; y: number } | null>(null);
+  let contextMenuDeleteFor = $state<string | null>(null);
+
+  const contextMenuTask = $derived(
+    contextMenuFor === null
+      ? null
+      : (writState.tasks.find((t) => t.id === contextMenuFor!.taskId) ?? null),
+  );
+  const contextMenuDeleteTask = $derived(
+    contextMenuDeleteFor === null
+      ? null
+      : (writState.tasks.find((t) => t.id === contextMenuDeleteFor) ?? null),
+  );
+  const contextMenuDeleteChildCount = $derived(
+    contextMenuDeleteFor === null
+      ? 0
+      : writState.tasks.filter((t) => t.parentId === contextMenuDeleteFor).length,
+  );
 
   // Filter state. Persisted to localStorage so a reload doesn't blow it away.
   // Single key for the whole user — only one project is open at a time and
@@ -167,6 +194,50 @@
     activeColumnId = task.columnId;
     showAddModal = false;
   }
+
+  function openTaskModal(id: string, mode: "view" | "edit" = "view"): void {
+    editingInitialMode = mode;
+    editingTaskId = id;
+  }
+
+  function openContextMenu(taskId: string, event: MouseEvent): void {
+    contextMenuFor = { taskId, x: event.clientX, y: event.clientY };
+  }
+
+  function closeContextMenu(): void {
+    contextMenuFor = null;
+  }
+
+  function cmEdit(): void {
+    if (!contextMenuFor) return;
+    openTaskModal(contextMenuFor.taskId, "edit");
+    closeContextMenu();
+  }
+
+  function cmSetPriority(p: Priority): void {
+    if (!contextMenuFor) return;
+    void writState.updateTask(contextMenuFor.taskId, { priority: p });
+    closeContextMenu();
+  }
+
+  function cmMove(columnId: string): void {
+    if (!contextMenuFor) return;
+    void writState.updateTask(contextMenuFor.taskId, { columnId });
+    closeContextMenu();
+  }
+
+  function cmRequestDelete(): void {
+    if (!contextMenuFor) return;
+    contextMenuDeleteFor = contextMenuFor.taskId;
+    closeContextMenu();
+  }
+
+  async function cmConfirmDelete(): Promise<void> {
+    if (!contextMenuDeleteFor) return;
+    const id = contextMenuDeleteFor;
+    contextMenuDeleteFor = null;
+    await writState.deleteTask(id);
+  }
 </script>
 
 <main class="flex h-full flex-col bg-base-100 text-base-content">
@@ -267,7 +338,9 @@
         {visibleTasks}
         {colorByTag}
         {childCount}
-        onTaskClick={(id) => (editingTaskId = id)}
+        onTaskClick={(id) => openTaskModal(id)}
+        onTaskContextMenu={openContextMenu}
+        contextMenuTaskId={contextMenuFor?.taskId ?? null}
       />
     {:else}
       <ListView
@@ -279,7 +352,9 @@
         {childCount}
         {columnNameById}
         {colorByTag}
-        onTaskClick={(id) => (editingTaskId = id)}
+        onTaskClick={(id) => openTaskModal(id)}
+        onTaskContextMenu={openContextMenu}
+        contextMenuTaskId={contextMenuFor?.taskId ?? null}
       />
     {/if}
   {/if}
@@ -288,13 +363,44 @@
     {#key editingTaskId}
       <TaskEditModal
         task={editingTask}
+        initialMode={editingInitialMode}
         onClose={() => (editingTaskId = null)}
-        onSwitch={(id) => (editingTaskId = id)}
+        onSwitch={(id) => openTaskModal(id)}
       />
     {/key}
   {/if}
 
   {#if showAddModal}
     <AddTaskModal onClose={() => (showAddModal = false)} onCreated={onTaskCreated} />
+  {/if}
+
+  {#if contextMenuFor && contextMenuTask}
+    {#key contextMenuFor.taskId}
+      <TaskContextMenu
+        task={contextMenuTask}
+        columns={writState.columns}
+        x={contextMenuFor.x}
+        y={contextMenuFor.y}
+        onEdit={cmEdit}
+        onSetPriority={cmSetPriority}
+        onMove={cmMove}
+        onDelete={cmRequestDelete}
+        onClose={closeContextMenu}
+      />
+    {/key}
+  {/if}
+
+  {#if contextMenuDeleteTask}
+    <ConfirmDialog
+      title="Delete this task?"
+      message={contextMenuDeleteChildCount > 0
+        ? `This will also delete ${contextMenuDeleteChildCount} subtask${contextMenuDeleteChildCount === 1 ? "" : "s"}. Can't be undone.`
+        : "Can't be undone."}
+      confirmLabel="Delete"
+      cancelLabel="Cancel"
+      variant="danger"
+      onConfirm={cmConfirmDelete}
+      onCancel={() => (contextMenuDeleteFor = null)}
+    />
   {/if}
 </main>

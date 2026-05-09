@@ -19,9 +19,22 @@
      *  glance which cards have children (visible only via the modal). */
     childCount: Record<string, number>;
     onTaskClick: (id: string) => void;
+    onTaskContextMenu: (id: string, event: MouseEvent) => void;
+    /** Id of the task whose context menu is currently open, if any. The
+     *  matching card gets the hover styling pinned so the user keeps a
+     *  visual link between the menu and its target. */
+    contextMenuTaskId: string | null;
   }
 
-  const { columns, visibleTasks, colorByTag, childCount, onTaskClick }: Props = $props();
+  const {
+    columns,
+    visibleTasks,
+    colorByTag,
+    childCount,
+    onTaskClick,
+    onTaskContextMenu,
+    contextMenuTaskId,
+  }: Props = $props();
 
   // Backlog and Archived are intentionally hidden from kanban — Backlog is
   // a pre-active staging list, Archived is post-resolved storage. Both stay
@@ -137,7 +150,12 @@
             type="button"
             class="card flex flex-col gap-1 bg-base-200 px-3 py-2 text-left text-sm hover:bg-base-300"
             class:opacity-40={draggingTaskId === task.id}
+            class:bg-base-300={contextMenuTaskId === task.id}
             onclick={() => onTaskClick(task.id)}
+            oncontextmenu={(e) => {
+              e.preventDefault();
+              onTaskContextMenu(task.id, e);
+            }}
             use:draggable={{
               data: { type: "card", taskId: task.id },
               onDragStart: () => (draggingTaskId = task.id),

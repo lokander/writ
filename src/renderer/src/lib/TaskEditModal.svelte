@@ -17,13 +17,18 @@
 
   interface Props {
     task: Task;
+    /** Mode the modal opens in. The context-menu "Edit task…" entry passes
+     *  `"edit"` so the user lands directly in the form; clicking a card
+     *  defaults to `"view"`. Captured-on-mount via untrack — the parent keys
+     *  the modal on task.id, so a switch remounts and re-reads this. */
+    initialMode?: "view" | "edit";
     onClose: () => void;
     onSwitch: (id: string) => void;
   }
 
-  const { task, onClose, onSwitch }: Props = $props();
+  const { task, initialMode = "view", onClose, onSwitch }: Props = $props();
 
-  let mode = $state<"view" | "edit">("view");
+  let mode = $state<"view" | "edit">(untrack(() => initialMode));
 
   // The modal is keyed by `task.id` in the parent (App.svelte), so a switch
   // to a different task remounts the component and these initializers re-run.

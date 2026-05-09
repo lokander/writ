@@ -19,6 +19,11 @@
     columnNameById: Record<string, string>;
     colorByTag: Record<string, string | null>;
     onTaskClick: (id: string) => void;
+    onTaskContextMenu: (id: string, event: MouseEvent) => void;
+    /** Id of the task whose context menu is currently open, if any. The
+     *  matching row gets the hover styling pinned so the user keeps a
+     *  visual link between the menu and its target. */
+    contextMenuTaskId: string | null;
   }
 
   let {
@@ -31,6 +36,8 @@
     columnNameById,
     colorByTag,
     onTaskClick,
+    onTaskContextMenu,
+    contextMenuTaskId,
   }: Props = $props();
 
   // Tab counts also reflect the filter — otherwise "Backlog (15)" with 3
@@ -94,8 +101,13 @@
   <button
     type="button"
     class="card flex flex-row items-baseline gap-3 bg-base-200 px-4 py-2 text-left text-sm hover:bg-base-300"
+    class:bg-base-300={contextMenuTaskId === task.id}
     style:margin-left="{depth * 1.5}rem"
     onclick={() => onTaskClick(task.id)}
+    oncontextmenu={(e) => {
+      e.preventDefault();
+      onTaskContextMenu(task.id, e);
+    }}
   >
     <TaskIdChip id={task.id} />
     <span class="flex-1">{task.title}</span>
