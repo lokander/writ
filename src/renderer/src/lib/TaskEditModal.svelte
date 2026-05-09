@@ -7,6 +7,7 @@
   import { writState } from "./state.svelte";
   import { indexTags } from "./tag-color";
   import { renderMarkdown } from "./markdown";
+  import ConfirmDialog from "./ConfirmDialog.svelte";
   import DependsOnPicker from "./DependsOnPicker.svelte";
   import ParentPicker from "./ParentPicker.svelte";
   import TagChip from "./TagChip.svelte";
@@ -109,6 +110,33 @@
     mode = "view";
   }
 
+  // Discard-confirmation gate. When the user tries to do something that
+  // would silently throw away unsaved edits (close the modal, hit Cancel,
+  // press Esc, click a subtask), `tryDiscardingAction` captures what they
+  // were trying to do. A `<ConfirmDialog>` opens; on confirm it runs the
+  // captured action, on cancel it just clears. Last attempt wins so a
+  // second click on a different discard path replaces the captured action
+  // — the dialog always reflects the user's most recent intent.
+  let pendingDiscardAction = $state<(() => void) | null>(null);
+  let confirmingDelete = $state(false);
+
+  function tryDiscardingAction(action: () => void): void {
+    if (mode === "edit" && dirty) {
+      pendingDiscardAction = action;
+    } else {
+      action();
+    }
+  }
+
+  function confirmDiscard(): void {
+    pendingDiscardAction?.();
+    pendingDiscardAction = null;
+  }
+
+  function cancelDiscard(): void {
+    pendingDiscardAction = null;
+  }
+
   async function save(): Promise<void> {
     if (!canSave) return;
     saving = true;
@@ -124,7 +152,8 @@
     if (updated) mode = "view";
   }
 
-  async function remove(): Promise<void> {
+  async function performDelete(): Promise<void> {
+    confirmingDelete = false;
     const ok = await writState.deleteTask(task.id);
     if (ok) onClose();
   }
@@ -150,12 +179,17 @@
 
   function onKeydown(event: KeyboardEvent): void {
     if (event.key !== "Escape") return;
-    // Esc unwinds layered state: subtask form → edit mode → close modal.
-    if (addingSubtask) {
+    // Esc unwinds layered state: discard prompt → subtask form → edit mode
+    // → close modal. The discard prompt takes precedence so Esc backs out
+    // of it without also tearing down the underlying edit state.
+    if (pendingDiscardAction) {
+      cancelDiscard();
+      event.stopPropagation();
+    } else if (addingSubtask) {
       cancelAddSubtask();
       event.stopPropagation();
     } else if (mode === "edit") {
-      cancelEdit();
+      tryDiscardingAction(cancelEdit);
       event.stopPropagation();
     } else {
       onClose();
@@ -182,14 +216,24 @@
   aria-labelledby="task-modal-title"
   tabindex="-1"
 >
-  <button type="button" class="modal-backdrop" aria-label="Close" onclick={onClose}></button>
+  <button
+    type="button"
+    class="modal-backdrop"
+    aria-label="Close"
+    onclick={() => tryDiscardingAction(onClose)}
+  ></button>
   <form class="modal-box w-[70vw] max-w-none" onsubmit={onSubmit}>
     {#if mode === "view"}
       <div class="mb-4 flex items-start justify-between gap-3">
         <h2 id="task-modal-title" class="text-2xl font-semibold leading-tight">{task.title}</h2>
         <div class="flex shrink-0 items-baseline gap-2">
           <span class="font-mono text-xs opacity-50">{task.id.slice(-6)}</span>
-          <button type="button" class="btn btn-ghost btn-sm" aria-label="Close" onclick={onClose}>
+          <button
+            type="button"
+            class="btn btn-ghost btn-sm"
+            aria-label="Close"
+            onclick={() => tryDiscardingAction(onClose)}
+          >
             <XIcon size={16} weight="bold" />
           </button>
         </div>
@@ -282,7 +326,12 @@
         <h2 id="task-modal-title" class="text-lg font-semibold">Edit task</h2>
         <div class="flex shrink-0 items-baseline gap-2">
           <span class="font-mono text-xs opacity-50">{task.id.slice(-6)}</span>
-          <button type="button" class="btn btn-ghost btn-sm" aria-label="Close" onclick={onClose}>
+          <button
+            type="button"
+            class="btn btn-ghost btn-sm"
+            aria-label="Close"
+            onclick={() => tryDiscardingAction(onClose)}
+          >
             <XIcon size={16} weight="bold" />
           </button>
         </div>
@@ -336,7 +385,7 @@
             <button
               type="button"
               class="card flex flex-row items-baseline gap-3 bg-base-200 px-3 py-2 text-left text-sm hover:bg-base-300"
-              onclick={() => onSwitch(child.id)}
+              onclick={() => tryDiscardingAction(() => onSwitch(child.id))}
             >
               <span class="font-mono text-xs opacity-50">{child.id.slice(-6)}</span>
               <span class="flex-1">{child.title}</span>
@@ -386,7 +435,11 @@
     </div>
 
     <div class="modal-action mt-6 flex items-center justify-between">
-      <button type="button" class="btn btn-error btn-outline" onclick={remove}>
+      <button
+        type="button"
+        class="btn btn-error btn-outline"
+        onclick={() => (confirmingDelete = true)}
+      >
         <TrashIcon size={16} weight="bold" />
         Delete
       </button>
@@ -397,10 +450,40 @@
             Edit
           </button>
         {:else}
-          <button type="button" class="btn btn-ghost" onclick={cancelEdit}>Cancel</button>
+          <button
+            type="button"
+            class="btn btn-ghost"
+            onclick={() => tryDiscardingAction(cancelEdit)}>Cancel</button
+          >
           <button type="submit" class="btn btn-primary" disabled={!canSave}>Save</button>
         {/if}
       </div>
     </div>
   </form>
 </div>
+
+{#if pendingDiscardAction}
+  <ConfirmDialog
+    title="Discard your edits?"
+    message="Your unsaved changes will be lost."
+    confirmLabel="Discard"
+    cancelLabel="Keep editing"
+    variant="danger"
+    onConfirm={confirmDiscard}
+    onCancel={cancelDiscard}
+  />
+{/if}
+
+{#if confirmingDelete}
+  <ConfirmDialog
+    title="Delete this task?"
+    message={children.length > 0
+      ? `This will also delete ${children.length} subtask${children.length === 1 ? "" : "s"}. Can't be undone.`
+      : "Can't be undone."}
+    confirmLabel="Delete"
+    cancelLabel="Cancel"
+    variant="danger"
+    onConfirm={performDelete}
+    onCancel={() => (confirmingDelete = false)}
+  />
+{/if}

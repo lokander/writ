@@ -1,6 +1,8 @@
 <script lang="ts" generics="T">
   import type { Snippet } from "svelte";
 
+  import { portal } from "./portal";
+
   interface Props {
     items: T[];
     itemText: (item: T) => string;
@@ -46,19 +48,6 @@
   // Stable per-instance id so the input can advertise aria-controls pointing
   // at its own listbox.
   const listboxId = `cbx-${crypto.randomUUID()}`;
-
-  // Portal the dropdown into document.body so it can render outside any
-  // ancestor that clips overflow or contains positioning. DaisyUI's modal-box
-  // does both (overflow-y: auto + transform), so without this the dropdown is
-  // clipped at the modal boundary.
-  function portal(node: HTMLElement): { destroy: () => void } {
-    document.body.appendChild(node);
-    return {
-      destroy() {
-        node.remove();
-      },
-    };
-  }
 
   function updateRect(): void {
     if (inputEl) inputRect = inputEl.getBoundingClientRect();
