@@ -41,6 +41,19 @@ const MIGRATIONS: ((db: SqliteDb) => void)[] = [
       );
     `);
   },
+
+  // v2: task dependencies (depends-on graph)
+  (db) => {
+    db.exec(`
+      CREATE TABLE task_dependencies (
+        task_id        TEXT REFERENCES tasks(id) ON DELETE CASCADE,
+        depends_on_id  TEXT REFERENCES tasks(id) ON DELETE CASCADE,
+        PRIMARY KEY (task_id, depends_on_id),
+        CHECK (task_id != depends_on_id)
+      );
+      CREATE INDEX task_deps_depends_on ON task_dependencies (depends_on_id);
+    `);
+  },
 ];
 
 function metaTableExists(db: SqliteDb): boolean {

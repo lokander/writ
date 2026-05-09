@@ -17,6 +17,14 @@ export interface Task {
   position: number;
   /** Tag names (sorted). Always populated by getTask / listTasks. */
   tags: string[];
+  /** Ids of all tasks this one depends on. Always populated. */
+  dependsOn: string[];
+  /** Subset of `dependsOn` that aren't yet in a Done column — what's still
+   *  blocking this task. Always populated. */
+  blockedBy: string[];
+  /** True iff every entry in `dependsOn` is in a Done column (or there are
+   *  no dependencies at all). Convenience for the `--ready` filter. */
+  isReady: boolean;
   createdAt: number;
   updatedAt: number;
 }
@@ -29,6 +37,8 @@ export interface NewTask {
   priority?: Priority;
   /** Tag specs: `NAME` or `NAME=COLOR`. Tags are auto-created on first use. */
   tags?: string[];
+  /** Ids (or unique suffixes — caller resolves) of tasks this depends on. */
+  dependsOn?: string[];
 }
 
 export interface TaskUpdate {
@@ -40,4 +50,6 @@ export interface TaskUpdate {
   position?: number;
   /** When provided, replaces the task's tag set. Tag specs: `NAME` or `NAME=COLOR`. */
   tags?: string[];
+  /** When provided, replaces the task's dependsOn set. `[]` clears all. */
+  dependsOn?: string[];
 }

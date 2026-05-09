@@ -3,7 +3,7 @@ import { join } from "path";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import icon from "../../resources/icon.png?asset";
 
-import { openDatabase, type SqliteDb } from "../shared/db";
+import { applyMigrations, openDatabase, type SqliteDb } from "../shared/db";
 import { listColumns } from "../shared/domain/columns";
 import { findProjectRoot, getDbPath } from "../shared/domain/project";
 import { listTags } from "../shared/domain/tags";
@@ -21,6 +21,7 @@ function openCurrentProject(): void {
   if (!root) return;
   const dbPath = getDbPath(root);
   currentDb = openDatabase(dbPath);
+  applyMigrations(currentDb);
   currentProject = { root, dbPath };
 }
 

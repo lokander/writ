@@ -7,6 +7,10 @@ export interface SerializeContext {
   /** All available column names; rendered into the col hint comment. */
   columnNames: string[];
   parentSuffix?: string;
+  /** Pre-computed last-6-char suffixes for each `task.dependsOn` id, in the
+   *  same order. The caller looks these up because task-format doesn't have
+   *  DB access for ulid → suffix conversion. */
+  dependsOnSuffixes?: string[];
 }
 
 const BODY_HINT = "<!-- writ-hint: everything below is the description (markdown allowed) -->";
@@ -32,8 +36,10 @@ export function serializeTaskFile({
   columnName,
   columnNames,
   parentSuffix,
+  dependsOnSuffixes,
 }: SerializeContext): string {
   const colHint = columnNames.length > 0 ? columnNames.join(" | ") : "existing column name";
+  const deps = dependsOnSuffixes ?? [];
   return [
     "---",
     `# writ task ${task.id.slice(-6)}`,
@@ -54,6 +60,9 @@ export function serializeTaskFile({
     "",
     "# tags: list of NAME or NAME=COLOR specs. Colors set on a tag persist globally.",
     `tags: ${yamlTagList(task.tags)}`,
+    "",
+    "# depends_on: list of ulid suffixes for tasks that block this one. Edit to change.",
+    `depends_on: ${yamlTagList(deps)}`,
     "---",
     "",
     BODY_HINT,
@@ -72,6 +81,9 @@ export interface ParsedTaskFile {
   // Array of tag specs (NAME or NAME=COLOR). Empty array clears all tags.
   // Validation/normalization happens later via setTaskTags.
   tags?: string[];
+  // Array of ulid suffixes (or full ids) for tasks that block this one.
+  // Caller resolves to ids via resolveTaskId. Empty array clears.
+  dependsOnInputs?: string[];
   description: string;
 }
 
@@ -153,6 +165,21 @@ export function parseTaskFile(content: string): ParsedTaskFile {
       specs.push(entry.trim());
     }
     out.tags = specs;
+  }
+
+  if ("depends_on" in fm) {
+    const v = fm.depends_on;
+    if (!Array.isArray(v)) {
+      throw new TaskFileParseError("depends_on: must be a list of ulid suffixes");
+    }
+    const inputs: string[] = [];
+    for (const entry of v) {
+      if (typeof entry !== "string" || entry.trim().length === 0) {
+        throw new TaskFileParseError("depends_on: entries must be non-empty strings");
+      }
+      inputs.push(entry.trim());
+    }
+    out.dependsOnInputs = inputs;
   }
 
   return out;

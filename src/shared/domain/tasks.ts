@@ -1,7 +1,8 @@
 import { ulid } from "ulid";
 import type { SqliteDb } from "../db";
 import type { NewTask, Priority, Task, TaskUpdate } from "../types";
-import { getFirstColumn } from "./columns";
+import { getFirstColumn, listColumns } from "./columns";
+import { listDependenciesByTaskIds, listDependencyIds, setDependencies } from "./dependencies";
 import { listTaskTagNames, listTaskTagsByTaskIds, setTaskTags } from "./tags";
 
 interface TaskRow {
@@ -26,9 +27,31 @@ function fromRow(row: TaskRow): Task {
     priority: row.priority as Priority,
     position: row.position,
     tags: [],
+    dependsOn: [],
+    blockedBy: [],
+    isReady: true,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+// Returns the set of task ids that are "done" — i.e. live in a column whose
+// name is `Done` (case-insensitive). Used to compute `blockedBy` and
+// `isReady` from the dependency graph.
+function loadDoneTaskIds(db: SqliteDb): Record<string, true> {
+  const doneCols = listColumns(db).filter((c) => c.name.toLowerCase() === "done");
+  if (doneCols.length === 0) return {};
+  const placeholders = doneCols.map(() => "?").join(", ");
+  const rows = db
+    .prepare(`SELECT id FROM tasks WHERE column_id IN (${placeholders})`)
+    .all(...doneCols.map((c) => c.id)) as { id: string }[];
+  const set: Record<string, true> = {};
+  for (const r of rows) set[r.id] = true;
+  return set;
+}
+
+function computeBlockedBy(dependsOn: string[], doneIds: Record<string, true>): string[] {
+  return dependsOn.filter((id) => !doneIds[id]);
 }
 
 export function createTask(db: SqliteDb, input: NewTask): Task {
@@ -62,6 +85,9 @@ export function createTask(db: SqliteDb, input: NewTask): Task {
     if (input.tags && input.tags.length > 0) {
       setTaskTags(db, id, input.tags);
     }
+    if (input.dependsOn && input.dependsOn.length > 0) {
+      setDependencies(db, id, input.dependsOn);
+    }
   })();
 
   return getTask(db, id)!;
@@ -72,6 +98,10 @@ export function getTask(db: SqliteDb, id: string): Task | null {
   if (!row) return null;
   const task = fromRow(row);
   task.tags = listTaskTagNames(db, id);
+  task.dependsOn = listDependencyIds(db, id);
+  const doneIds = loadDoneTaskIds(db);
+  task.blockedBy = computeBlockedBy(task.dependsOn, doneIds);
+  task.isReady = task.blockedBy.length === 0;
   return task;
 }
 
@@ -83,6 +113,10 @@ export interface ListFilter {
   tags?: string[];
   // OR filter: returned tasks must have at least one of these tag names.
   anyTags?: string[];
+  // Only tasks with no open blockers (or no dependencies at all).
+  ready?: boolean;
+  // Only tasks with at least one open blocker.
+  blocked?: boolean;
 }
 
 export function listTasks(db: SqliteDb, filter: ListFilter = {}): Task[] {
@@ -108,13 +142,17 @@ export function listTasks(db: SqliteDb, filter: ListFilter = {}): Task[] {
     .all(...params) as TaskRow[];
   let tasks = rows.map(fromRow);
 
-  // Bulk-load tags so the renderer/CLI can show them without N+1 queries.
-  const tagsByTaskId = listTaskTagsByTaskIds(
-    db,
-    tasks.map((t) => t.id),
-  );
+  // Bulk-load tags + dependencies so the renderer/CLI can show them without
+  // N+1 queries. The Done lookup is done once and reused for every task.
+  const ids = tasks.map((t) => t.id);
+  const tagsByTaskId = listTaskTagsByTaskIds(db, ids);
+  const depsByTaskId = listDependenciesByTaskIds(db, ids);
+  const doneIds = loadDoneTaskIds(db);
   for (const task of tasks) {
     task.tags = tagsByTaskId[task.id] ?? [];
+    task.dependsOn = depsByTaskId[task.id] ?? [];
+    task.blockedBy = computeBlockedBy(task.dependsOn, doneIds);
+    task.isReady = task.blockedBy.length === 0;
   }
 
   // Tag filtering happens in JS — clearer than threading another join into
@@ -126,6 +164,12 @@ export function listTasks(db: SqliteDb, filter: ListFilter = {}): Task[] {
   if (filter.anyTags && filter.anyTags.length > 0) {
     const allowed = filter.anyTags;
     tasks = tasks.filter((t) => allowed.some((name) => t.tags.includes(name)));
+  }
+  if (filter.ready === true) {
+    tasks = tasks.filter((t) => t.isReady);
+  }
+  if (filter.blocked === true) {
+    tasks = tasks.filter((t) => !t.isReady);
   }
 
   return tasks;
@@ -165,8 +209,9 @@ export function updateTask(db: SqliteDb, id: string, update: TaskUpdate): Task |
 
   const hasFieldUpdate = fields.length > 0;
   const hasTagUpdate = update.tags !== undefined;
+  const hasDependencyUpdate = update.dependsOn !== undefined;
 
-  if (!hasFieldUpdate && !hasTagUpdate) return existing;
+  if (!hasFieldUpdate && !hasTagUpdate && !hasDependencyUpdate) return existing;
 
   db.transaction(() => {
     if (hasFieldUpdate) {
@@ -177,6 +222,9 @@ export function updateTask(db: SqliteDb, id: string, update: TaskUpdate): Task |
     }
     if (hasTagUpdate) {
       setTaskTags(db, id, update.tags!);
+    }
+    if (hasDependencyUpdate) {
+      setDependencies(db, id, update.dependsOn!);
     }
   })();
 
@@ -232,7 +280,7 @@ export function resolveTaskId(db: SqliteDb, input: string): Task {
 
   if (rows.length === 0) throw new TaskNotFoundError(input);
   if (rows.length > 1) throw new AmbiguousTaskError(input, rows.map(fromRow));
-  // resolveTaskId callers don't use .tags off this — they call getTask if they
-  // need the full hydrated task. Returning a tag-empty task is fine here.
+  // resolveTaskId callers don't use the hydrated fields off this — they call
+  // getTask if they need a fully populated record.
   return fromRow(rows[0]);
 }

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { X, Trash, Plus, PencilSimple } from "phosphor-svelte";
+  import { X, Trash, Plus, PencilSimple, LockSimple } from "phosphor-svelte";
 
   import type { Priority, Task } from "../../../shared/types";
   import { PRIORITY_NAMES } from "../../../shared/types";
@@ -35,6 +35,9 @@
   let tagError = $state<string | null>(null);
   let saving = $state(false);
 
+  let dependsOnIds = $state<string[]>([...task.dependsOn]);
+  let pickedDependsOnId = $state("");
+
   let addingSubtask = $state(false);
   let newSubtaskTitle = $state("");
 
@@ -45,12 +48,20 @@
     return a.some((v, i) => v !== b[i]);
   });
 
+  const dependsOnDirty = $derived.by(() => {
+    if (dependsOnIds.length !== task.dependsOn.length) return true;
+    const a = [...dependsOnIds].sort();
+    const b = [...task.dependsOn].sort();
+    return a.some((v, i) => v !== b[i]);
+  });
+
   const dirty = $derived(
     title !== task.title ||
       description !== task.description ||
       priority !== task.priority ||
       parentId !== task.parentId ||
-      tagsDirty,
+      tagsDirty ||
+      dependsOnDirty,
   );
 
   const canSave = $derived(dirty && title.trim().length > 0 && !saving);
@@ -71,6 +82,52 @@
     }
     return set;
   });
+
+  // BFS through depends-on edges from `candidateId` to see whether it would
+  // (transitively) reach the current task. If so, attaching the candidate as
+  // a blocker would create a cycle. Mirrors the cycle check in the domain
+  // layer (which the user gets at save time anyway, but doing it client-side
+  // lets us hide invalid candidates from the picker).
+  function wouldCycle(candidateId: string): boolean {
+    if (candidateId === task.id) return true;
+    const visited: Record<string, true> = {};
+    const queue: string[] = [candidateId];
+    while (queue.length > 0) {
+      const cur = queue.shift()!;
+      if (cur === task.id) return true;
+      if (visited[cur]) continue;
+      visited[cur] = true;
+      const row = writState.tasks.find((t) => t.id === cur);
+      if (!row) continue;
+      for (const depId of row.dependsOn) queue.push(depId);
+    }
+    return false;
+  }
+
+  const dependencyOptions = $derived(
+    writState.tasks
+      .filter((t) => t.id !== task.id)
+      .filter((t) => !dependsOnIds.includes(t.id))
+      .filter((t) => !wouldCycle(t.id))
+      .slice()
+      .sort((a, b) => a.title.localeCompare(b.title)),
+  );
+
+  const dependents = $derived(writState.tasks.filter((t) => t.dependsOn.includes(task.id)));
+
+  function addDependency(): void {
+    if (!pickedDependsOnId) return;
+    if (dependsOnIds.includes(pickedDependsOnId)) {
+      pickedDependsOnId = "";
+      return;
+    }
+    dependsOnIds = [...dependsOnIds, pickedDependsOnId];
+    pickedDependsOnId = "";
+  }
+
+  function removeDependencyAt(index: number): void {
+    dependsOnIds = dependsOnIds.filter((_, i) => i !== index);
+  }
 
   const parentOptions = $derived(
     writState.tasks
@@ -133,6 +190,8 @@
     useCustomColor = false;
     newTagColor = "#888888";
     tagError = null;
+    dependsOnIds = [...task.dependsOn];
+    pickedDependsOnId = "";
     mode = "edit";
   }
 
@@ -184,6 +243,7 @@
       priority,
       parentId,
       tags: tagsDirty ? tagSpecs : undefined,
+      dependsOn: dependsOnDirty ? dependsOnIds : undefined,
     });
     saving = false;
     if (updated) mode = "view";
@@ -294,6 +354,65 @@
           </span>
         {/if}
       </div>
+
+      {#if task.dependsOn.length > 0}
+        <div class="mb-4">
+          <div class="label label-text mb-1 flex items-center gap-2 opacity-60">
+            <LockSimple
+              size={14}
+              weight="fill"
+              class={task.isReady ? "opacity-40" : "text-warning"}
+            />
+            Blocked by ({task.blockedBy.length}/{task.dependsOn.length} open)
+          </div>
+          <div class="flex flex-col gap-1">
+            {#each task.dependsOn as blockerId (blockerId)}
+              {@const blocker = writState.tasks.find((t) => t.id === blockerId)}
+              {#if blocker}
+                {@const stillBlocking = task.blockedBy.includes(blockerId)}
+                <button
+                  type="button"
+                  class="card flex flex-row items-baseline gap-3 bg-base-200 px-3 py-2 text-left text-sm hover:bg-base-300"
+                  class:opacity-50={!stillBlocking}
+                  onclick={() => onSwitch(blocker.id)}
+                >
+                  <span class="font-mono text-xs opacity-50">{blocker.id.slice(-6)}</span>
+                  <span class="flex-1">
+                    {#if !stillBlocking}<span class="line-through">{blocker.title}</span
+                      >{:else}{blocker.title}{/if}
+                  </span>
+                  <span class="badge badge-outline badge-sm">
+                    {columnNameById[blocker.columnId] ?? "?"}
+                  </span>
+                </button>
+              {/if}
+            {/each}
+          </div>
+        </div>
+      {/if}
+
+      {#if dependents.length > 0}
+        <div class="mb-4">
+          <div class="label label-text mb-1 opacity-60">
+            Blocks ({dependents.length})
+          </div>
+          <div class="flex flex-col gap-1">
+            {#each dependents as dep (dep.id)}
+              <button
+                type="button"
+                class="card flex flex-row items-baseline gap-3 bg-base-200 px-3 py-2 text-left text-sm hover:bg-base-300"
+                onclick={() => onSwitch(dep.id)}
+              >
+                <span class="font-mono text-xs opacity-50">{dep.id.slice(-6)}</span>
+                <span class="flex-1">{dep.title}</span>
+                <span class="badge badge-outline badge-sm">
+                  {columnNameById[dep.columnId] ?? "?"}
+                </span>
+              </button>
+            {/each}
+          </div>
+        </div>
+      {/if}
 
       <div class="mb-6">
         <div class="label label-text mb-1 opacity-60">Description</div>
@@ -412,6 +531,58 @@
         {#if tagError}
           <span class="label label-text text-error mt-1 text-xs">{tagError}</span>
         {/if}
+      </div>
+
+      <div class="form-control mb-4 w-full">
+        <span class="label label-text">Blocked by</span>
+
+        {#if dependsOnIds.length > 0}
+          <div class="mb-2 flex flex-col gap-1">
+            {#each dependsOnIds as depId, i (depId)}
+              {@const dep = writState.tasks.find((t) => t.id === depId)}
+              <div class="card flex flex-row items-baseline gap-3 bg-base-200 px-3 py-2 text-sm">
+                <span class="font-mono text-xs opacity-50">{depId.slice(-6)}</span>
+                <span class="flex-1">{dep?.title ?? "(unknown)"}</span>
+                {#if dep}
+                  <span class="badge badge-outline badge-sm">
+                    {columnNameById[dep.columnId] ?? "?"}
+                  </span>
+                {/if}
+                <button
+                  type="button"
+                  class="opacity-70 hover:opacity-100"
+                  aria-label="Remove blocker"
+                  onclick={() => removeDependencyAt(i)}
+                >
+                  <X size={12} weight="bold" />
+                </button>
+              </div>
+            {/each}
+          </div>
+        {/if}
+
+        <div class="flex flex-wrap items-center gap-2">
+          <select
+            class="select select-bordered select-sm flex-1 min-w-[10rem]"
+            bind:value={pickedDependsOnId}
+          >
+            <option value="">(pick a task to depend on)</option>
+            {#each dependencyOptions as opt (opt.id)}
+              <option value={opt.id}>
+                {opt.id.slice(-6)} — {opt.title}
+              </option>
+            {/each}
+          </select>
+          <button
+            type="button"
+            class="btn btn-primary btn-sm"
+            onclick={addDependency}
+            disabled={!pickedDependsOnId}
+          >
+            <Plus size={14} weight="bold" />
+            Add
+          </button>
+        </div>
       </div>
     {/if}
 

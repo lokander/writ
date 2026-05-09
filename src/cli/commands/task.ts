@@ -3,6 +3,7 @@ import { getColumnByName, listColumns } from "../../shared/domain/columns";
 import {
   createTask,
   deleteTask,
+  getTask,
   listTasks,
   moveTask,
   resolveTaskId,
@@ -54,6 +55,7 @@ interface AddOptions {
   description?: string;
   parent?: string;
   tag?: string[];
+  dependsOn?: string[];
 }
 
 interface ListOptions {
@@ -61,18 +63,25 @@ interface ListOptions {
   tag?: string[];
   anyTag?: string[];
   showDone?: boolean;
+  ready?: boolean;
+  blocked?: boolean;
 }
 
 interface EditOptions {
   tag?: string[];
+  dependsOn?: string[];
 }
 
 function viewTask(idInput: string): void {
   const { db } = resolveProjectDb();
   try {
-    const task = resolveTaskId(db, idInput);
+    const resolved = resolveTaskId(db, idInput);
     const columns = listColumns(db);
     const allTasks = listTasks(db);
+    // resolveTaskId returns a tag-empty / dep-empty stub (it's a cheap suffix
+    // resolver, not a full hydrator). Pull the fully populated row out of the
+    // listTasks result so renderTaskView sees real tags / blockers / etc.
+    const task = allTasks.find((t) => t.id === resolved.id) ?? resolved;
     process.stdout.write(renderTaskView(task, columns, allTasks) + "\n");
   } catch (e) {
     handleCliError(e);
@@ -107,6 +116,11 @@ export function taskCommand(): Command {
       "Tag spec: NAME or NAME=COLOR. Repeatable. Auto-creates tags on first use.",
       collectString,
     )
+    .option(
+      "--depends-on <id>",
+      "Make this task depend on another (full ulid or unique suffix). Repeatable.",
+      collectString,
+    )
     .action((title: string, opts: AddOptions) => {
       const { db } = resolveProjectDb();
       try {
@@ -124,6 +138,8 @@ export function taskCommand(): Command {
           parentId = resolveTaskId(db, opts.parent).id;
         }
 
+        const dependsOn = opts.dependsOn?.map((ref) => resolveTaskId(db, ref).id);
+
         const task = createTask(db, {
           title,
           description: opts.description,
@@ -131,6 +147,7 @@ export function taskCommand(): Command {
           parentId,
           priority: opts.priority,
           tags: opts.tag,
+          dependsOn,
         });
         console.log(`Created ${task.id.slice(-6)}  ${task.title}`);
       } catch (e) {
@@ -155,6 +172,8 @@ export function taskCommand(): Command {
       collectString,
     )
     .option("--show-done", "Include the Done column (hidden by default)")
+    .option("--ready", "Only tasks whose blockers (if any) are all in Done")
+    .option("--blocked", "Only tasks with at least one open blocker")
     .action((opts: ListOptions) => {
       const { db } = resolveProjectDb();
       try {
@@ -162,6 +181,8 @@ export function taskCommand(): Command {
         const allTasks = listTasks(db, {
           tags: opts.tag,
           anyTags: opts.anyTag,
+          ready: opts.ready,
+          blocked: opts.blocked,
         });
 
         if (allTasks.length === 0) {
@@ -262,21 +283,35 @@ export function taskCommand(): Command {
       "Replace the task's tag set (NAME or NAME=COLOR). Repeatable. Skips the editor.",
       collectString,
     )
+    .option(
+      "--depends-on <id>",
+      "Replace the task's dependency set (full ulid or unique suffix). Repeatable. Skips the editor.",
+      collectString,
+    )
     .action((idInput: string, opts: EditOptions) => {
       const { db } = resolveProjectDb();
       try {
         const task = resolveTaskId(db, idInput);
 
-        // Direct flag mode: `--tag X --tag Y` replaces the set without opening
-        // the editor. Plays the role of a one-shot tag-set command without
-        // proliferating top-level subcommands.
-        if (opts.tag !== undefined) {
-          updateTask(db, task.id, { tags: opts.tag });
-          console.log(`Updated ${task.id.slice(-6)}  (tags)`);
+        // Direct flag mode: `--tag X --tag Y` (or `--depends-on …`) replaces
+        // the set without opening the editor. Combines if both flags are
+        // passed together.
+        const directUpdates: { tags?: string[]; dependsOn?: string[] } = {};
+        if (opts.tag !== undefined) directUpdates.tags = opts.tag;
+        if (opts.dependsOn !== undefined) {
+          directUpdates.dependsOn = opts.dependsOn.map((ref) => resolveTaskId(db, ref).id);
+        }
+        if (Object.keys(directUpdates).length > 0) {
+          updateTask(db, task.id, directUpdates);
+          const summary = Object.keys(directUpdates).join(", ");
+          console.log(`Updated ${task.id.slice(-6)}  (${summary})`);
           return;
         }
 
-        editTaskViaEditor(db, task);
+        // Hydrate before opening the editor so the YAML reflects current
+        // tags / depends_on (resolveTaskId returns a stub).
+        const hydrated = getTask(db, task.id) ?? task;
+        editTaskViaEditor(db, hydrated);
       } catch (e) {
         handleCliError(e);
       } finally {
@@ -297,6 +332,7 @@ function editTaskViaEditor(db: import("../../shared/db").SqliteDb, task: Task): 
     columnName: colName,
     columnNames: columns.map((c) => c.name),
     parentSuffix,
+    dependsOnSuffixes: task.dependsOn.map((id) => id.slice(-6)),
   });
   const filename = `task-${task.id.slice(-6)}.md`;
   const edited = editInExternalEditor(initial, filename);
@@ -318,6 +354,7 @@ function editTaskViaEditor(db: import("../../shared/db").SqliteDb, task: Task): 
       columnId?: string;
       parentId?: string | null;
       tags?: string[];
+      dependsOn?: string[];
     } = {};
 
     if (parsed.title !== undefined && parsed.title !== task.title) {
@@ -349,6 +386,12 @@ function editTaskViaEditor(db: import("../../shared/db").SqliteDb, task: Task): 
     }
     if (parsed.tags !== undefined && !sameTagSet(parsed.tags, task.tags)) {
       update.tags = parsed.tags;
+    }
+    if (parsed.dependsOnInputs !== undefined) {
+      const resolved = parsed.dependsOnInputs.map((ref) => resolveTaskId(db, ref).id);
+      if (!sameIdSet(resolved, task.dependsOn)) {
+        update.dependsOn = resolved;
+      }
     }
 
     if (Object.keys(update).length === 0) {
@@ -382,6 +425,13 @@ function sameTagSet(incoming: string[], current: string[]): boolean {
   const a = [...incoming].sort();
   const b = [...current].sort();
   return a.every((v, i) => v === b[i]);
+}
+
+function sameIdSet(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const aa = [...a].sort();
+  const bb = [...b].sort();
+  return aa.every((v, i) => v === bb[i]);
 }
 
 function priorityChip(p: Priority): string {
@@ -445,6 +495,7 @@ export function renderTaskView(task: Task, columns: Column[], allTasks: Task[]):
   const colName = columns.find((c) => c.id === task.columnId)?.name ?? "?";
   const parentLabel = task.parentId ? task.parentId.slice(-6) : "—";
   const subtasks = allTasks.filter((t) => t.parentId === task.id);
+  const dependents = allTasks.filter((t) => t.dependsOn.includes(task.id));
   const tagLabel = task.tags.length === 0 ? "—" : task.tags.join(", ");
   const pad = (s: string): string => s.padEnd(10);
 
@@ -456,6 +507,7 @@ export function renderTaskView(task: Task, columns: Column[], allTasks: Task[]):
     `${pad("Parent")} ${parentLabel}`,
     `${pad("Tags")} ${tagLabel}`,
     `${pad("Subtasks")} ${subtasks.length}`,
+    `${pad("Ready")} ${task.isReady ? "yes" : `no — ${task.blockedBy.length} open blocker${task.blockedBy.length === 1 ? "" : "s"}`}`,
     `${pad("Created")} ${formatTimestamp(task.createdAt)}`,
     `${pad("Updated")} ${formatTimestamp(task.updatedAt)}`,
     "",
@@ -466,6 +518,26 @@ export function renderTaskView(task: Task, columns: Column[], allTasks: Task[]):
   } else {
     for (const line of task.description.split("\n")) {
       lines.push("  " + line);
+    }
+  }
+
+  if (task.dependsOn.length > 0) {
+    lines.push("");
+    lines.push(`Blocked by (${task.dependsOn.length})`);
+    for (const blockerId of task.dependsOn) {
+      const blocker = allTasks.find((t) => t.id === blockerId);
+      if (!blocker) continue;
+      const stillBlocking = task.blockedBy.includes(blockerId);
+      const marker = stillBlocking ? "  " : "✓ ";
+      lines.push(`  ${marker}${formatTaskLine(blocker)}`);
+    }
+  }
+
+  if (dependents.length > 0) {
+    lines.push("");
+    lines.push(`Blocks (${dependents.length})`);
+    for (const dep of dependents) {
+      lines.push(`  ${formatTaskLine(dep)}`);
     }
   }
 

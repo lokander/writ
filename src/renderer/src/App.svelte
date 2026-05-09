@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { Notepad, Plus } from "phosphor-svelte";
+  import { Notepad, Plus, LockSimple } from "phosphor-svelte";
 
   import TaskEditModal from "./lib/TaskEditModal.svelte";
   import { writState } from "./lib/state.svelte";
@@ -170,6 +170,16 @@
     >
       <span class="font-mono text-xs opacity-50">{task.id.slice(-6)}</span>
       <span class="flex-1">{task.title}</span>
+      {#if task.blockedBy.length > 0}
+        <span
+          class="text-warning"
+          title="Blocked by {task.blockedBy.length} open task{task.blockedBy.length === 1
+            ? ''
+            : 's'}"
+        >
+          <LockSimple size={14} weight="fill" />
+        </span>
+      {/if}
       {#each task.tags as tag (tag)}
         {@const ts = tagStyle(tag, colorByTag[tag] ?? null)}
         <span class="badge badge-sm {ts.className}" style:background-color={ts.inlineBg}>

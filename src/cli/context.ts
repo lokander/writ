@@ -1,4 +1,4 @@
-import { openDatabase, type SqliteDb } from "../shared/db";
+import { applyMigrations, openDatabase, type SqliteDb } from "../shared/db";
 import { findProjectRoot, getDbPath } from "../shared/domain/project";
 import { AmbiguousTaskError, TaskNotFoundError } from "../shared/domain/tasks";
 
@@ -14,6 +14,9 @@ export function resolveProjectDb(cwd: string = process.cwd()): ResolvedProject {
     process.exit(1);
   }
   const db = openDatabase(getDbPath(root));
+  // Apply any pending migrations. Idempotent — no-op when the DB is already
+  // at the latest schema version.
+  applyMigrations(db);
   return { db, root };
 }
 

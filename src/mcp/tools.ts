@@ -1,6 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { openDatabase, type SqliteDb } from "../shared/db";
+import { applyMigrations, openDatabase, type SqliteDb } from "../shared/db";
 import { getColumnByName, listColumns } from "../shared/domain/columns";
 import { findProjectRoot, getDbPath } from "../shared/domain/project";
 import { listTags } from "../shared/domain/tags";
@@ -52,6 +52,7 @@ function withDb<T>(fn: (db: SqliteDb) => T): ToolResult {
       );
     }
     db = openDatabase(getDbPath(root));
+    applyMigrations(db);
     const result = fn(db);
     return asJson(result);
   } catch (e) {
@@ -64,6 +65,9 @@ function withDb<T>(fn: (db: SqliteDb) => T): ToolResult {
 interface PresentationContext {
   columnsById: Map<string, string>;
   childCounts: Map<string, number>;
+  /** Inverse of dependsOn: id → list of task ids that depend on it. Lets every
+   *  summary surface a `blocks` array without an extra DB hit per row. */
+  dependentsByTaskId: Map<string, string[]>;
 }
 
 interface TaskSummary {
@@ -73,6 +77,9 @@ interface TaskSummary {
   priority: string;
   parent_id: string | null;
   tags: string[];
+  depends_on: string[];
+  blocks: string[];
+  is_ready: boolean;
   subtasks: number;
   created_at: string;
   updated_at: string;
@@ -86,10 +93,16 @@ function buildContext(db: SqliteDb): PresentationContext {
   const columnsById = new Map(listColumns(db).map((c) => [c.id, c.name]));
   const all = listTasks(db);
   const childCounts = new Map<string, number>();
+  const dependentsByTaskId = new Map<string, string[]>();
   for (const t of all) {
     if (t.parentId) childCounts.set(t.parentId, (childCounts.get(t.parentId) ?? 0) + 1);
+    for (const blockerId of t.dependsOn) {
+      const list = dependentsByTaskId.get(blockerId) ?? [];
+      list.push(t.id);
+      dependentsByTaskId.set(blockerId, list);
+    }
   }
-  return { columnsById, childCounts };
+  return { columnsById, childCounts, dependentsByTaskId };
 }
 
 function presentSummary(task: Task, ctx: PresentationContext): TaskSummary {
@@ -100,6 +113,9 @@ function presentSummary(task: Task, ctx: PresentationContext): TaskSummary {
     priority: PRIORITY_NAMES[task.priority],
     parent_id: task.parentId,
     tags: task.tags,
+    depends_on: task.dependsOn,
+    blocks: ctx.dependentsByTaskId.get(task.id) ?? [],
+    is_ready: task.isReady,
     subtasks: ctx.childCounts.get(task.id) ?? 0,
     created_at: new Date(task.createdAt).toISOString(),
     updated_at: new Date(task.updatedAt).toISOString(),
@@ -152,15 +168,27 @@ export function registerTools(server: McpServer): void {
           .describe(
             "Filter to tasks tagged with ANY of these names (OR). Combine with `tag` to AND across the union.",
           ),
+        ready: z
+          .boolean()
+          .optional()
+          .describe(
+            "When true, return only tasks whose blockers (if any) are all in a Done column.",
+          ),
+        blocked: z
+          .boolean()
+          .optional()
+          .describe("When true, return only tasks with at least one open blocker."),
       },
     },
-    async ({ column, parent_id, tag, any_tag }) =>
+    async ({ column, parent_id, tag, any_tag, ready, blocked }) =>
       withDb((db) => {
         const filter: ListFilter = {};
         if (column) filter.columnId = resolveColumnId(db, column);
         if (parent_id !== undefined) filter.parentId = parent_id;
         if (tag !== undefined) filter.tags = tag;
         if (any_tag !== undefined) filter.anyTags = any_tag;
+        if (ready !== undefined) filter.ready = ready;
+        if (blocked !== undefined) filter.blocked = blocked;
         const ctx = buildContext(db);
         const tasks = listTasks(db, filter);
         return {
@@ -213,12 +241,19 @@ export function registerTools(server: McpServer): void {
           .describe(
             "Tag specs: `NAME` or `NAME=COLOR`. Tags are auto-created on first use; passing `=COLOR` upserts the color globally for that tag. Color accepts hex (`#rgb`/`#rrggbb`) or a CSS named color.",
           ),
+        depends_on: z
+          .array(z.string())
+          .optional()
+          .describe(
+            "Tasks that block this one (full ulids or unique suffixes). Cycles are rejected.",
+          ),
       },
     },
-    async ({ title, description, column, priority, parent_id, tags }) =>
+    async ({ title, description, column, priority, parent_id, tags, depends_on }) =>
       withDb((db) => {
         const columnId = column ? resolveColumnId(db, column) : undefined;
         const parentId = parent_id ? resolveTaskId(db, parent_id).id : undefined;
+        const dependsOn = depends_on?.map((ref) => resolveTaskId(db, ref).id);
         const created = createTask(db, {
           title,
           description,
@@ -226,6 +261,7 @@ export function registerTools(server: McpServer): void {
           parentId,
           priority: priority ? PRIORITY_MAP[priority] : undefined,
           tags,
+          dependsOn,
         });
         return presentFull(created, buildContext(db));
       }),
@@ -254,9 +290,15 @@ export function registerTools(server: McpServer): void {
           .describe(
             "Replace the task's tag set. Each entry is `NAME` or `NAME=COLOR` — the latter upserts that tag's color globally. Pass `[]` to clear all tags. Omit to leave tags unchanged.",
           ),
+        depends_on: z
+          .array(z.string())
+          .optional()
+          .describe(
+            "Replace the task's dependency set (full ulids or unique suffixes). Pass `[]` to clear all dependencies. Omit to leave them unchanged. Cycles are rejected.",
+          ),
       },
     },
-    async ({ id, title, description, column, priority, parent_id, tags }) =>
+    async ({ id, title, description, column, priority, parent_id, tags, depends_on }) =>
       withDb((db) => {
         const task = resolveTaskId(db, id);
         const update: Parameters<typeof updateTask>[2] = {};
@@ -274,6 +316,9 @@ export function registerTools(server: McpServer): void {
           }
         }
         if (tags !== undefined) update.tags = tags;
+        if (depends_on !== undefined) {
+          update.dependsOn = depends_on.map((ref) => resolveTaskId(db, ref).id);
+        }
         const updated = updateTask(db, task.id, update);
         if (!updated) throw new Error(`Task ${task.id} disappeared during update.`);
         return presentFull(updated, buildContext(db));
