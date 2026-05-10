@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { Command } from "commander";
+import { completionCommand } from "./commands/completion";
 import { initCommand } from "./commands/init";
 import { mcpCommand } from "./commands/mcp";
 import { projectCommand } from "./commands/project";
@@ -25,6 +26,7 @@ async function main(): Promise<void> {
   program.addCommand(taskCommand());
   program.addCommand(projectCommand());
   program.addCommand(mcpCommand());
+  program.addCommand(completionCommand());
 
   await program.parseAsync(process.argv);
 }
