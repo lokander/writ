@@ -186,8 +186,11 @@
     // liveness socket receives a CLI / MCP ping, or fs.watch on `.writ/`
     // sees the DB change. Covers the "tab to terminal, run writ task add,
     // tab back" flow plus any third-party write that bypasses our tools.
+    // `silent: true` skips the loading flicker so the main view stays
+    // mounted across the refetch — keyed each blocks diff by id and only
+    // changed rows actually re-render.
     return window.api.events.onProjectChanged(() => {
-      writState.loadAll();
+      writState.loadAll({ silent: true });
     });
   });
 

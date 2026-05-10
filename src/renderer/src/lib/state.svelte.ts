@@ -8,9 +8,21 @@ export class WritState {
   loading = $state(true);
   error = $state<string | null>(null);
 
-  async loadAll(): Promise<void> {
-    this.loading = true;
-    this.error = null;
+  /** Refetch everything from main and assign. With keyed `{#each}` blocks
+   *  diffing by id, unchanged rows keep their component instances and DOM —
+   *  no scroll / hover / context-menu loss.
+   *
+   *  `silent: true` (used by the project:changed push handler) skips the
+   *  `loading` flip so the UI doesn't unmount its main view to show the
+   *  "Loading…" placeholder, and on IPC failure keeps existing arrays in
+   *  place rather than wiping to `error`. The initial onMount call leaves
+   *  silent off so the first paint still shows the spinner. */
+  async loadAll(options: { silent?: boolean } = {}): Promise<void> {
+    const silent = options.silent ?? false;
+    if (!silent) {
+      this.loading = true;
+      this.error = null;
+    }
     try {
       const [project, columns, tasks, tags] = await Promise.all([
         window.api.project.current(),
@@ -22,10 +34,19 @@ export class WritState {
       this.columns = columns;
       this.tasks = tasks;
       this.tags = tags;
+      // A successful silent reload also clears any prior error: fresh data
+      // means whatever caused the last failure is over.
+      if (silent && this.error !== null) this.error = null;
     } catch (e) {
-      this.error = e instanceof Error ? e.message : String(e);
+      if (silent) {
+        // Don't wipe the UI on a transient IPC hiccup — existing arrays
+        // stay in place; the next push or manual reload re-tries.
+        console.warn("[writ] silent loadAll failed; keeping stale data", e);
+      } else {
+        this.error = e instanceof Error ? e.message : String(e);
+      }
     } finally {
-      this.loading = false;
+      if (!silent) this.loading = false;
     }
   }
 
