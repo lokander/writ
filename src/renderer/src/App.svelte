@@ -546,6 +546,7 @@
       message={contextMenuDeleteChildCount > 0
         ? `This will also delete ${contextMenuDeleteChildCount} subtask${contextMenuDeleteChildCount === 1 ? "" : "s"}. Can't be undone.`
         : "Can't be undone."}
+      task={{ title: contextMenuDeleteTask.title, id: contextMenuDeleteTask.id }}
       confirmLabel="Delete"
       cancelLabel="Cancel"
       variant="danger"

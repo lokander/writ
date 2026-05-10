@@ -648,6 +648,7 @@
     message={children.length > 0
       ? `This will also delete ${children.length} subtask${children.length === 1 ? "" : "s"}. Can't be undone.`
       : "Can't be undone."}
+    task={{ title: task.title, id: task.id }}
     confirmLabel="Delete"
     cancelLabel="Cancel"
     variant="danger"

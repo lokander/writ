@@ -6,6 +6,10 @@
     /** Optional secondary line under the title. Use for context — "this can't
      *  be undone", "you have unsaved edits", etc. */
     message?: string;
+    /** Optional identity card under the message. Use on destructive task
+     *  confirms so the user can verify which task they're about to act on
+     *  (right-click on the wrong card, stale view, etc.). */
+    task?: { title: string; id: string };
     confirmLabel?: string;
     cancelLabel?: string;
     /** `danger` colors the confirm button red, used for destructive actions
@@ -18,6 +22,7 @@
   const {
     title,
     message,
+    task,
     confirmLabel = "Confirm",
     cancelLabel = "Cancel",
     variant = "default",
@@ -62,6 +67,14 @@
     <h3 id="confirm-dialog-title" class="text-lg font-semibold">{title}</h3>
     {#if message}
       <p class="mt-2 text-sm opacity-70">{message}</p>
+    {/if}
+    {#if task}
+      <div
+        class="mt-3 flex items-baseline gap-2 rounded-lg border border-base-300 bg-base-200 px-3 py-2"
+      >
+        <span class="font-mono text-xs opacity-50">{task.id.slice(-6)}</span>
+        <span class="truncate text-sm">{task.title}</span>
+      </div>
     {/if}
     <div class="mt-6 flex justify-end gap-2">
       <button type="button" class="btn btn-ghost btn-sm" onclick={onCancel}>
