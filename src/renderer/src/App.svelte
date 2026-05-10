@@ -1,11 +1,11 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { FolderOpenIcon } from "phosphor-svelte";
 
   import AddTaskModal from "./lib/modal/AddTaskModal.svelte";
   import AppBar, { VIEWS, type View } from "./lib/bar/AppBar.svelte";
   import FilterBar, { STATE_FILTERS, type StateFilter } from "./lib/bar/FilterBar.svelte";
   import ConfirmDialog from "./lib/modal/ConfirmDialog.svelte";
+  import EmptyState from "./lib/view/EmptyState.svelte";
   import KanbanView from "./lib/view/KanbanView.svelte";
   import ListView from "./lib/view/ListView.svelte";
   import TaskContextMenu from "./lib/picker/TaskContextMenu.svelte";
@@ -338,23 +338,8 @@
 <main class="flex h-full flex-col bg-base-100 text-base-content">
   <AppBar bind:view onOpenProject={openProjectFolder} onNewTask={() => (showAddModal = true)} />
 
-  {#if writState.loading}
-    <div class="flex flex-1 items-center justify-center text-base-content/60">Loading…</div>
-  {:else if !writState.project}
-    <div class="flex flex-1 flex-col items-center justify-center gap-3 px-4 text-center">
-      {#if writState.error}
-        <div class="alert alert-error max-w-2xl">{writState.error}</div>
-      {:else}
-        <p>No writ project found.</p>
-      {/if}
-      <button type="button" class="btn btn-primary btn-sm" onclick={openProjectFolder}>
-        <FolderOpenIcon size={14} weight="bold" />
-        Open project…
-      </button>
-      <p class="text-sm opacity-60">
-        Or run <code class="kbd">writ init</code> in a project directory.
-      </p>
-    </div>
+  {#if writState.loading || !writState.project}
+    <EmptyState onOpenProject={openProjectFolder} />
   {:else}
     <!-- Mutation failures surface through <ToastStack /> at the bottom of
          the tree, not an inline banner. `writState.error` is now only the
