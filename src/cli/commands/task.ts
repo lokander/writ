@@ -502,7 +502,6 @@ function sameIdSet(a: string[], b: string[]): boolean {
 }
 
 function priorityChip(p: Priority): string {
-  if (p === 2) return "";
   return `[${PRIORITY_NAMES[p][0]}] `;
 }
 
