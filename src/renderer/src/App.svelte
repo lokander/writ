@@ -41,16 +41,26 @@
   const VIEW_STORAGE_KEY = "writ:view";
 
   let activeColumnId = $state<string | null>(null);
-  let editingTaskId = $state<string | null>(null);
   // Inline rename for the project display name in the header. Click the
   // name → swap to an input. Enter / blur saves; Esc cancels; empty value
   // clears the override and falls back to the cwd basename.
   let renamingProject = $state(false);
   let renameValue = $state("");
-  // Captured fresh each time the modal opens; the modal reads it once on
-  // mount via untrack. Card clicks land in "view"; context-menu Edit lands
-  // in "edit".
-  let editingInitialMode = $state<"view" | "edit">("view");
+
+  // Stack of open task modals. Each `onSwitch` (clicking a parent, blocker,
+  // subtask, dependent, or markdown id chip) pushes a new entry; the prior
+  // modal stays mounted underneath so its form state survives. Closing the
+  // top entry pops it; closing the bottom collapses the stack to empty.
+  // Capped at MAX_MODAL_STACK_DEPTH — a 6th push surfaces a toast rather
+  // than silently swallowing the click.
+  type ModalEntry = { taskId: string; initialMode: "view" | "edit"; uid: number };
+  const MAX_MODAL_STACK_DEPTH = 5;
+  let modalStack = $state<ModalEntry[]>([]);
+  // Bumped on every push so {#each} keying remounts a fresh component when
+  // the same task is pushed twice (cycle A → B → A lands a brand-new A on
+  // top of the original A, not a re-use).
+  let nextModalUid = 1;
+
   let showAddModal = $state(false);
   let view = $state<View>("kanban");
 
@@ -317,8 +327,18 @@
   }
 
   function openTaskModal(id: string, mode: "view" | "edit" = "view"): void {
-    editingInitialMode = mode;
-    editingTaskId = id;
+    if (modalStack.length >= MAX_MODAL_STACK_DEPTH) {
+      toast.show(
+        `Modal stack at max depth (${MAX_MODAL_STACK_DEPTH}). Close one before opening another.`,
+        { variant: "warning" },
+      );
+      return;
+    }
+    modalStack = [...modalStack, { taskId: id, initialMode: mode, uid: nextModalUid++ }];
+  }
+
+  function closeTopModal(): void {
+    modalStack = modalStack.slice(0, -1);
   }
 
   function openContextMenu(taskId: string, event: MouseEvent): void {
@@ -610,16 +630,17 @@
     {/if}
   {/if}
 
-  {#if editingTaskId !== null}
-    {#key editingTaskId}
-      <TaskEditModal
-        taskId={editingTaskId}
-        initialMode={editingInitialMode}
-        onClose={() => (editingTaskId = null)}
-        onSwitch={(id) => openTaskModal(id)}
-      />
-    {/key}
-  {/if}
+  {#each modalStack as entry, i (entry.uid)}
+    {@const isTop = i === modalStack.length - 1}
+    <TaskEditModal
+      taskId={entry.taskId}
+      initialMode={entry.initialMode}
+      {isTop}
+      stackIndex={i}
+      onClose={closeTopModal}
+      onSwitch={(id) => openTaskModal(id)}
+    />
+  {/each}
 
   {#if showAddModal}
     <AddTaskModal onClose={() => (showAddModal = false)} onCreated={onTaskCreated} />

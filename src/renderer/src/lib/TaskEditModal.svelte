@@ -43,11 +43,20 @@
      *  defaults to `"view"`. Captured-on-mount via untrack — the parent keys
      *  the modal on taskId, so a switch remounts and re-reads this. */
     initialMode?: "view" | "edit";
+    /** True when this modal sits at the top of the stack and should react
+     *  to keyboard / backdrop events. Lower modals stay mounted (so their
+     *  form state is preserved when the user pops back) but are hidden
+     *  via `display: none` and ignore Esc / clicks. */
+    isTop: boolean;
+    /** Position in the modal stack (0 = bottom). Drives the inline z-index
+     *  so a higher entry paints over lower ones, leaving headroom under
+     *  ConfirmDialog (z-1100) and ToastStack (z-1200). */
+    stackIndex: number;
     onClose: () => void;
     onSwitch: (id: string) => void;
   }
 
-  const { taskId, initialMode = "view", onClose, onSwitch }: Props = $props();
+  const { taskId, initialMode = "view", isTop, stackIndex, onClose, onSwitch }: Props = $props();
 
   let mode = $state<"view" | "edit">(untrack(() => initialMode));
 
@@ -204,8 +213,8 @@
   // Delegated click handler for markdown-rendered task id links (see
   // `linkifyTaskIds` in `markdown.ts`). Walks up from the click target to
   // find the nearest `[data-task-id]`, resolves it against the live task
-  // list, and switches the modal — through `tryDiscardingAction` so unsaved
-  // edits surface the discard confirm.
+  // list, and pushes a new modal on top via onSwitch — no discard prompt
+  // because the current modal isn't being torn down, just covered.
   //
   // - No-match: silent no-op (the task description acceptance criterion
   //   explicitly calls out "no error spam" for unresolvable backticked
@@ -213,8 +222,8 @@
   //   trigger a toast every click).
   // - Ambiguous: a 6-char suffix can in theory collide across two tasks.
   //   Surface a warning so the user knows why the click did nothing.
-  // - Clicking your own id is a no-op (no point switching to the modal
-  //   you're already in).
+  // - Clicking your own id is a no-op (pushing a duplicate of the topmost
+  //   would just stack the same task on top of itself for no benefit).
   function onDescriptionClick(event: MouseEvent): void {
     const target = event.target;
     if (!(target instanceof Element)) return;
@@ -235,7 +244,7 @@
     }
     const resolved = matches[0]!;
     if (resolved.id === taskId) return;
-    tryDiscardingAction(() => onSwitch(resolved.id));
+    onSwitch(resolved.id);
   }
 
   // Conflict state. When `tasks:update` returns `{ kind: "conflict" }`,
@@ -360,6 +369,10 @@
   }
 
   function onKeydown(event: KeyboardEvent): void {
+    // Every stacked modal binds its own svelte:window keydown — only the
+    // topmost should react, else Esc on a stack of 3 would tear down all
+    // three at once.
+    if (!isTop) return;
     if (event.key !== "Escape") return;
     // Esc unwinds layered state: discard prompt → subtask form → edit mode
     // → close modal. The discard prompt takes precedence so Esc backs out
@@ -391,12 +404,23 @@
 
 <svelte:window onkeydown={onKeydown} />
 
+<!-- Stack semantics: lower entries stay mounted AND visible — the topmost
+     modal's backdrop covers them, and `inert` blocks any tab / click /
+     screen-reader input from sneaking through. Hiding lower modals via
+     display:none caused a brief backdrop flash on push/pop as the
+     underlying layer toggled in. z-index 900 + (10 × stackIndex) keeps
+     each stacked instance above the one below it while staying clear of
+     ConfirmDialog (1100) and ToastStack (1200). The isTop gate on
+     onKeydown above silences window-bound event handlers from lower
+     modals (which inert doesn't reach since they're window-level). -->
 <div
   class="modal modal-open"
   role="dialog"
   aria-modal="true"
   aria-labelledby="task-modal-title"
   tabindex="-1"
+  inert={!isTop}
+  style:z-index={900 + stackIndex * 10}
 >
   <button
     type="button"
@@ -597,7 +621,7 @@
             <button
               type="button"
               class="card flex flex-row items-baseline gap-3 bg-base-200 px-3 py-2 text-left text-sm hover:bg-base-300"
-              onclick={() => tryDiscardingAction(() => onSwitch(child.id))}
+              onclick={() => onSwitch(child.id)}
             >
               <TaskIdChip id={child.id} />
               <span class="flex-1">{child.title}</span>
