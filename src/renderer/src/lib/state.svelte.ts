@@ -1,4 +1,9 @@
 import type { Column, NewTask, ProjectInfo, Tag, Task, TaskUpdate } from "../../../shared/types";
+import { toast } from "./toast.svelte";
+
+function errorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
 
 /** Outcome of a `tasks:update` round-trip. The modal needs to distinguish
  *  "task vanished" from "your edit was based on stale state" so it can drive
@@ -16,6 +21,10 @@ export class WritState {
   tasks = $state<Task[]>([]);
   tags = $state<Tag[]>([]);
   loading = $state(true);
+  /** Sticky message shown in the no-project empty state ("you opened a
+   *  folder without `.writ/`"). Cleared on a successful project load.
+   *  Transient mutation failures go through `toast.show(...)` instead so
+   *  they don't lock the empty state into an error view. */
   error = $state<string | null>(null);
 
   /** Refetch everything from main and assign. With keyed `{#each}` blocks
@@ -44,8 +53,8 @@ export class WritState {
       this.columns = columns;
       this.tasks = tasks;
       this.tags = tags;
-      // A successful silent reload also clears any prior error: fresh data
-      // means whatever caused the last failure is over.
+      // A successful silent reload also clears any prior empty-state error:
+      // fresh data means whatever caused the last failure is over.
       if (silent && this.error !== null) this.error = null;
     } catch (e) {
       if (silent) {
@@ -53,7 +62,9 @@ export class WritState {
         // stay in place; the next push or manual reload re-tries.
         console.warn("[writ] silent loadAll failed; keeping stale data", e);
       } else {
-        this.error = e instanceof Error ? e.message : String(e);
+        // First-load failure leaves no project context to fall back to, so
+        // it lands in the empty-state surface rather than the toast stack.
+        this.error = errorMessage(e);
       }
     } finally {
       if (!silent) this.loading = false;
@@ -66,7 +77,7 @@ export class WritState {
     try {
       this.tags = await window.api.tags.list();
     } catch (e) {
-      this.error = e instanceof Error ? e.message : String(e);
+      toast.show(errorMessage(e), { variant: "error" });
     }
   }
 
@@ -76,7 +87,7 @@ export class WritState {
     try {
       this.project = await window.api.project.setDisplayName(name);
     } catch (e) {
-      this.error = e instanceof Error ? e.message : String(e);
+      toast.show(errorMessage(e), { variant: "error" });
     }
   }
 
@@ -89,7 +100,7 @@ export class WritState {
       if (input.tags && input.tags.length > 0) await this.refreshTags();
       return task;
     } catch (e) {
-      this.error = e instanceof Error ? e.message : String(e);
+      toast.show(errorMessage(e), { variant: "error" });
       return null;
     }
   }
@@ -101,8 +112,8 @@ export class WritState {
         // Stale-read: a concurrent writer beat us. Refresh the local copy of
         // that task with the now-current state so the UI reflects the truth
         // either way (the conflict dialog will let the user decide what to
-        // do); we don't set `error` because the failure isn't a system bug
-        // and the modal owns the retry flow.
+        // do); we don't toast because the failure isn't a system bug and
+        // the modal owns the retry flow.
         const current = result.conflict.current;
         this.tasks = this.tasks.map((t) => (t.id === id ? current : t));
         return { kind: "conflict", current };
@@ -113,7 +124,7 @@ export class WritState {
       if (update.tags !== undefined) await this.refreshTags();
       return { kind: "ok", task: updated };
     } catch (e) {
-      this.error = e instanceof Error ? e.message : String(e);
+      toast.show(errorMessage(e), { variant: "error" });
       return { kind: "missing" };
     }
   }
@@ -124,7 +135,7 @@ export class WritState {
       if (ok) this.tasks = this.tasks.filter((t) => t.id !== id);
       return ok;
     } catch (e) {
-      this.error = e instanceof Error ? e.message : String(e);
+      toast.show(errorMessage(e), { variant: "error" });
       return false;
     }
   }

@@ -19,9 +19,11 @@
   import TagChip from "./lib/TagChip.svelte";
   import TaskContextMenu from "./lib/TaskContextMenu.svelte";
   import TaskEditModal from "./lib/TaskEditModal.svelte";
+  import ToastStack from "./lib/ToastStack.svelte";
   import { PRIORITY_DOT_CLASS } from "./lib/priority-color";
   import { writState } from "./lib/state.svelte";
   import { indexTags } from "./lib/tag-color";
+  import { toast } from "./lib/toast.svelte";
   import { PRIORITY_NAMES, type Priority, type Task } from "../../shared/types";
 
   type StateFilter = "any" | "ready" | "blocked";
@@ -368,14 +370,19 @@
       if ("canceled" in result) return;
       if ("error" in result) {
         // Main skipped the broadcast on the error path so this silent refetch
-        // doesn't race the error setter that follows it.
+        // doesn't race the error setter that follows it. Use the sticky
+        // empty-state surface (not a toast) — picking a non-writ folder
+        // leaves the app project-less, and the user needs the explanation
+        // visible until they pick another folder or run `writ init`.
         await writState.loadAll({ silent: true });
         writState.error = result.error;
         return;
       }
       await writState.loadAll();
     } catch (e) {
-      writState.error = e instanceof Error ? e.message : String(e);
+      // Unexpected IPC failure during folder-pick — surface transiently;
+      // the app state hasn't necessarily changed.
+      toast.show(e instanceof Error ? e.message : String(e), { variant: "error" });
     }
   }
 </script>
@@ -492,14 +499,10 @@
       </p>
     </div>
   {:else}
-    {#if writState.error}
-      <!-- Non-destructive banner above the main view. Mutations that fail
-           (drag rollback, modal save error) used to swap out the kanban
-           entirely; surfacing the error inline here keeps the user's work
-           visible while still flagging the failure. Cleared on the next
-           successful loadAll (push refresh, manual reload). -->
-      <div class="alert alert-error mx-4 mt-4">{writState.error}</div>
-    {/if}
+    <!-- Mutation failures surface through <ToastStack /> at the bottom of
+         the tree, not an inline banner. `writState.error` is now only the
+         empty-state surface (handled in the !writState.project branch
+         above). -->
     <div
       class="flex flex-wrap items-center gap-x-4 gap-y-2 border-b px-4 py-2 transition-colors {filtersActive
         ? 'border-primary/40 bg-primary/5'
@@ -652,4 +655,6 @@
       onCancel={() => (contextMenuDeleteFor = null)}
     />
   {/if}
+
+  <ToastStack />
 </main>
