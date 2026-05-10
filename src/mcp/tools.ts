@@ -72,6 +72,11 @@ interface PresentationContext {
 
 interface TaskSummary {
   id: string;
+  /** Last 6 chars of `id`. Matches what `task list` and the renderer cards
+   *  display, so it's the canonical short form to quote when referring to a
+   *  task in chat. Cross-task references (parent_id, depends_on, blocks) stay
+   *  as full ulids — they're meant to feed straight back into other tools. */
+  short_id: string;
   title: string;
   column: string;
   priority: string;
@@ -89,7 +94,7 @@ interface TaskFull extends TaskSummary {
   description: string;
 }
 
-function buildContext(db: SqliteDb): PresentationContext {
+export function buildContext(db: SqliteDb): PresentationContext {
   const columnsById = new Map(listColumns(db).map((c) => [c.id, c.name]));
   const all = listTasks(db);
   const childCounts = new Map<string, number>();
@@ -105,9 +110,10 @@ function buildContext(db: SqliteDb): PresentationContext {
   return { columnsById, childCounts, dependentsByTaskId };
 }
 
-function presentSummary(task: Task, ctx: PresentationContext): TaskSummary {
+export function presentSummary(task: Task, ctx: PresentationContext): TaskSummary {
   return {
     id: task.id,
+    short_id: task.id.slice(-6),
     title: task.title,
     column: ctx.columnsById.get(task.columnId) ?? "?",
     priority: PRIORITY_NAMES[task.priority],
@@ -143,7 +149,7 @@ export function registerTools(server: McpServer): void {
     {
       title: "List tasks",
       description:
-        "List tasks in the current writ project, grouped by column. The description field is omitted to keep the output compact — call get_task to retrieve a task's body.",
+        "List tasks in the current writ project, grouped by column. The description field is omitted to keep the output compact — call get_task to retrieve a task's body. Each task includes both `id` (full 26-char ulid) and `short_id` (last 6 chars, what the CLI / desktop UI display); when referring to a task in chat, quote `short_id` or the full `id` — never an arbitrary substring of the ulid.",
       inputSchema: {
         column: z
           .string()
@@ -203,7 +209,8 @@ export function registerTools(server: McpServer): void {
     "get_task",
     {
       title: "Get task",
-      description: "Fetch a single task's full details including its markdown description.",
+      description:
+        "Fetch a single task's full details including its markdown description. The returned object includes both `id` (full 26-char ulid) and `short_id` (last 6 chars, what the CLI / desktop UI display); quote `short_id` or full `id` when referring to the task in chat — never an arbitrary substring.",
       inputSchema: {
         id: z.string().describe("Full ulid or any unique suffix (e.g. last 6 chars)."),
       },

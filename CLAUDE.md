@@ -116,4 +116,4 @@ This repo uses [Conventional Commits](https://www.conventionalcommits.org/). Com
 
 The user keeps durable architectural rationale in `~/.claude/projects/-home-lok-projects-writ/memory/` (loaded automatically). `design.md` is the in-repo, code-adjacent version. When they conflict, prefer `design.md` and update memory. When implementation diverges from both, ask before silently choosing.
 
-**When referring to a writ task, use the last 6 chars of the ulid** (e.g. `KENMJM`, not `MJM`). Matches what `task list` and the renderer cards show, so the user can copy-paste between conversation and the UI.
+**When referring to a writ task, use either the canonical short id (last 6 chars of the ulid) or the full 26-char ulid — never an arbitrary slice from the middle.** Both the renderer cards and CLI `task list` display the last-6 (e.g. `1JW7CB` for `01KR79KE0ASZ9ZVVC7V71JW7CB`), so that's what's greppable / copy-pasteable between chat and the UI. MCP `list_tasks` / `get_task` return the canonical form as `short_id` alongside the full `id` — quote one of those, never a "looks unique" middle run like `9KE0AS`.
