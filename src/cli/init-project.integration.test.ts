@@ -9,12 +9,27 @@ describe.concurrent("writ init", () => {
       expect(r.stdout).toMatch(/Initialized writ project at .*\.writ\/writ\.db/);
     }));
 
-  it("is idempotent — re-init reports already-initialized", () =>
+  it("prints next-steps and gitignore guidance on fresh init", () =>
+    withProject(async (dir) => {
+      const r = await runWrit(dir, ["init"]);
+      expect(r.exitCode).toBe(0);
+      // Quickstart commands cover the user's three likely next moves.
+      expect(r.stdout).toMatch(/writ task add/);
+      expect(r.stdout).toMatch(/writ task list/);
+      expect(r.stdout).toMatch(/writ mcp install/);
+      // Gitignore note flags the non-obvious "commit the DB" default so
+      // users don't end up gitignoring `.writ/` by reflex.
+      expect(r.stdout).toMatch(/\.gitignore/);
+    }));
+
+  it("is idempotent — re-init reports already-initialized and skips next-steps", () =>
     withProject(async (dir) => {
       await init(dir);
       const r = await runWrit(dir, ["init"]);
       expect(r.exitCode).toBe(0);
       expect(r.stdout).toMatch(/already initialized/);
+      // The next-steps block is fresh-init-only; re-init stays terse.
+      expect(r.stdout).not.toMatch(/Next steps/);
     }));
 
   it("task commands fail outside a writ project with a clear message", () =>
