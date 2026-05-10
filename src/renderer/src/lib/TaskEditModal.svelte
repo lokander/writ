@@ -12,6 +12,7 @@
   import type { Priority, Task } from "../../../shared/types";
   import { PRIORITY_NAMES } from "../../../shared/types";
   import { writState } from "./state.svelte";
+  import { buildTaskUpdate, diffTask } from "./diff-task";
   import { indexTags } from "./tag-color";
   import { renderMarkdown } from "./markdown";
   import ConfirmDialog from "./ConfirmDialog.svelte";
@@ -81,28 +82,25 @@
   let addingSubtask = $state(false);
   let newSubtaskTitle = $state("");
 
-  const tagsDirty = $derived.by(() => {
-    if (tagSpecs.length !== task.tags.length) return true;
-    const a = [...tagSpecs].sort();
-    const b = [...task.tags].sort();
-    return a.some((v, i) => v !== b[i]);
-  });
-
-  const dependsOnDirty = $derived.by(() => {
-    if (dependsOnIds.length !== task.dependsOn.length) return true;
-    const a = [...dependsOnIds].sort();
-    const b = [...task.dependsOn].sort();
-    return a.some((v, i) => v !== b[i]);
-  });
-
-  const dirty = $derived(
-    title !== task.title ||
-      description !== task.description ||
-      priority !== task.priority ||
-      parentId !== task.parentId ||
-      tagsDirty ||
-      dependsOnDirty,
+  // Per-field dirty flags. The IPC payload at save() narrows to only fields
+  // that are dirty so an external writer's concurrent edit to (say) the
+  // description isn't clobbered by our stale snapshot when the user only
+  // touched the title. The flag-by-field shape is also what makes slice 3's
+  // auto-merge feasible: when local-dirty and remote-changed sets don't
+  // intersect, the conflict resolves silently. Logic lives in `diff-task.ts`
+  // (unit-tested) — the component just wraps it in a $derived for reactivity.
+  const dirtyFlags = $derived(
+    diffTask(task, {
+      title,
+      description,
+      priority,
+      parentId,
+      tagSpecs,
+      dependsOnIds,
+    }),
   );
+
+  const dirty = $derived(dirtyFlags.any);
 
   const canSave = $derived(dirty && title.trim().length > 0 && !saving && !taskGone);
 
@@ -182,14 +180,15 @@
   async function save(): Promise<void> {
     if (!canSave) return;
     saving = true;
-    const updated = await writState.updateTask(task.id, {
-      title: title.trim(),
+    const update = buildTaskUpdate(task, {
+      title,
       description,
       priority,
       parentId,
-      tags: tagsDirty ? tagSpecs : undefined,
-      dependsOn: dependsOnDirty ? dependsOnIds : undefined,
+      tagSpecs,
+      dependsOnIds,
     });
+    const updated = await writState.updateTask(task.id, update);
     saving = false;
     if (updated) mode = "view";
   }
