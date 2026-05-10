@@ -158,6 +158,36 @@
 
   const colorByTag = $derived(indexTags(writState.tags));
 
+  // Tag chips are scoped to tags actually present in the user's current
+  // view scope — kanban hides Backlog/Archived, list shows just the active
+  // tab's column. Filtering by tag still narrows within that scope, but
+  // the legend stops listing tags the user can't see anyway. Active filter
+  // tags are always kept in the chip set so they remain togglable even
+  // after the tasks they matched moved out of view.
+  const tagsInView = $derived.by(() => {
+    const seen: Record<string, true> = {};
+    if (view === "kanban") {
+      const hidden: Record<string, true> = {};
+      for (const c of writState.columns) {
+        const n = c.name.toLowerCase();
+        if (n === "backlog" || n === "archived") hidden[c.id] = true;
+      }
+      for (const t of writState.tasks) {
+        if (hidden[t.columnId]) continue;
+        for (const name of t.tags) seen[name] = true;
+      }
+    } else if (activeColumnId !== null) {
+      for (const t of writState.tasks) {
+        if (t.columnId !== activeColumnId) continue;
+        for (const name of t.tags) seen[name] = true;
+      }
+    }
+    for (const name of filterTags) seen[name] = true;
+    return seen;
+  });
+
+  const visibleTagChips = $derived(writState.tags.filter((t) => tagsInView[t.name]));
+
   function toggleTagFilter(name: string): void {
     if (filterTags.includes(name)) {
       filterTags = filterTags.filter((t) => t !== name);
@@ -394,7 +424,9 @@
     <div class="alert alert-error m-4">{writState.error}</div>
   {:else}
     <div
-      class="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-base-300 bg-base-200 px-4 py-2"
+      class="flex flex-wrap items-center gap-x-4 gap-y-2 border-b px-4 py-2 transition-colors {filtersActive
+        ? 'border-primary/40 bg-primary/5'
+        : 'border-base-300 bg-base-200'}"
     >
       <div class="join">
         {#each STATE_FILTERS as opt (opt)}
@@ -425,9 +457,9 @@
         {/each}
       </div>
 
-      {#if writState.tags.length > 0}
+      {#if visibleTagChips.length > 0}
         <div class="flex flex-wrap items-center gap-1">
-          {#each writState.tags as tag (tag.name)}
+          {#each visibleTagChips as tag (tag.name)}
             {@const active = filterTags.includes(tag.name)}
             <button
               type="button"
