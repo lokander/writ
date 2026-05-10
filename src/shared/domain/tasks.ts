@@ -119,6 +119,8 @@ export interface ListFilter {
   tags?: string[];
   // OR filter: returned tasks must have at least one of these tag names.
   anyTags?: string[];
+  // OR filter: returned tasks must have one of these priorities. Empty / undefined is a no-op.
+  priorities?: Priority[];
   // Only tasks with no open blockers (or no dependencies at all).
   ready?: boolean;
   // Only tasks with at least one open blocker.
@@ -170,6 +172,10 @@ export function listTasks(db: SqliteDb, filter: ListFilter = {}): Task[] {
   if (filter.anyTags && filter.anyTags.length > 0) {
     const allowed = filter.anyTags;
     tasks = tasks.filter((t) => allowed.some((name) => t.tags.includes(name)));
+  }
+  if (filter.priorities && filter.priorities.length > 0) {
+    const allowed = new Set(filter.priorities);
+    tasks = tasks.filter((t) => allowed.has(t.priority));
   }
   if (filter.ready === true) {
     tasks = tasks.filter((t) => t.isReady);

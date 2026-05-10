@@ -50,6 +50,11 @@ function collectString(value: string, prev: string[] | undefined): string[] {
   return prev ? [...prev, value] : [value];
 }
 
+function collectPriority(value: string, prev: Priority[] | undefined): Priority[] {
+  const p = parsePriority(value);
+  return prev ? [...prev, p] : [p];
+}
+
 interface AddOptions {
   priority?: Priority;
   col?: string;
@@ -63,6 +68,7 @@ interface ListOptions {
   col?: string;
   tag?: string[];
   anyTag?: string[];
+  priority?: Priority[];
   showDone?: boolean;
   showArchived?: boolean;
   ready?: boolean;
@@ -166,6 +172,11 @@ export function taskCommand(): Command {
       "Filter to tasks tagged with any of these names. Repeatable; OR semantics.",
       collectString,
     )
+    .option(
+      "--priority <level>",
+      "Filter to tasks at this priority (u/h/n/l or 0-3). Repeatable; multiple --priority flags OR.",
+      collectPriority,
+    )
     .option("--show-done", "Include the Done column (hidden by default)")
     .option("--show-archived", "Include the Archived column (hidden by default)")
     .option("--ready", "Only tasks whose blockers (if any) are all in Done or Archived")
@@ -176,6 +187,7 @@ export function taskCommand(): Command {
         const allTasks = listTasks(db, {
           tags: opts.tag,
           anyTags: opts.anyTag,
+          priorities: opts.priority,
           ready: opts.ready,
           blocked: opts.blocked,
         });
@@ -214,14 +226,15 @@ export function taskCommand(): Command {
           filteredColumns = columns.filter((c) => !hiddenColumnIds.has(c.id));
         }
 
-        // Narrowing filters (tag/any-tag/ready/blocked) can leave a child in
-        // the visible set without its parent. The hierarchical render would
-        // hide such orphans because it walks down from top-level tasks.
+        // Narrowing filters (tag/any-tag/priority/ready/blocked) can leave a
+        // child in the visible set without its parent. The hierarchical render
+        // would hide such orphans because it walks down from top-level tasks.
         // Switch to a flat per-column render whenever a narrowing filter is
         // on, so every matching task surfaces.
         const flatRender = Boolean(
           (opts.tag && opts.tag.length > 0) ||
           (opts.anyTag && opts.anyTag.length > 0) ||
+          (opts.priority && opts.priority.length > 0) ||
           opts.ready ||
           opts.blocked,
         );

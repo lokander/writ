@@ -56,6 +56,35 @@ describe.concurrent("writ task list", () => {
       expect(orXY.stdout).toContain("both");
     }));
 
+  it("--priority narrows to one level; multiple --priority flags OR", () =>
+    withProject(async (dir) => {
+      await init(dir);
+      await runWrit(dir, ["task", "add", "urgent-task", "--priority", "urgent"]);
+      await runWrit(dir, ["task", "add", "high-task", "--priority", "high"]);
+      await runWrit(dir, ["task", "add", "normal-task"]);
+      await runWrit(dir, ["task", "add", "low-task", "--priority", "low"]);
+
+      const onlyUrgent = await runWrit(dir, ["task", "list", "--priority", "urgent"]);
+      expect(onlyUrgent.exitCode).toBe(0);
+      expect(onlyUrgent.stdout).toContain("urgent-task");
+      expect(onlyUrgent.stdout).not.toContain("high-task");
+      expect(onlyUrgent.stdout).not.toContain("normal-task");
+      expect(onlyUrgent.stdout).not.toContain("low-task");
+
+      const urgentOrHigh = await runWrit(dir, [
+        "task",
+        "list",
+        "--priority",
+        "urgent",
+        "--priority",
+        "high",
+      ]);
+      expect(urgentOrHigh.stdout).toContain("urgent-task");
+      expect(urgentOrHigh.stdout).toContain("high-task");
+      expect(urgentOrHigh.stdout).not.toContain("normal-task");
+      expect(urgentOrHigh.stdout).not.toContain("low-task");
+    }));
+
   it("--ready hides blocked tasks; --blocked hides ready ones", () =>
     withProject(async (dir) => {
       await init(dir);

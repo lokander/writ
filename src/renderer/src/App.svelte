@@ -9,13 +9,21 @@
   import TagChip from "./lib/TagChip.svelte";
   import TaskContextMenu from "./lib/TaskContextMenu.svelte";
   import TaskEditModal from "./lib/TaskEditModal.svelte";
+  import { PRIORITY_DOT_CLASS } from "./lib/priority-color";
   import { writState } from "./lib/state.svelte";
   import { indexTags } from "./lib/tag-color";
-  import type { Priority, Task } from "../../shared/types";
+  import { PRIORITY_NAMES, type Priority, type Task } from "../../shared/types";
 
   type StateFilter = "any" | "ready" | "blocked";
   type View = "kanban" | "list";
   const STATE_FILTERS: StateFilter[] = ["any", "ready", "blocked"];
+  // Order matches the priority enum so the chip row reads urgent → low.
+  const PRIORITY_CHIPS: { value: Priority; label: string; dotClass: string }[] = [
+    { value: 0, label: PRIORITY_NAMES[0], dotClass: PRIORITY_DOT_CLASS[0] },
+    { value: 1, label: PRIORITY_NAMES[1], dotClass: PRIORITY_DOT_CLASS[1] },
+    { value: 2, label: PRIORITY_NAMES[2], dotClass: PRIORITY_DOT_CLASS[2] },
+    { value: 3, label: PRIORITY_NAMES[3], dotClass: PRIORITY_DOT_CLASS[3] },
+  ];
   const VIEWS: View[] = ["list", "kanban"];
   const FILTER_STORAGE_KEY = "writ:filter";
   const VIEW_STORAGE_KEY = "writ:view";
@@ -59,9 +67,12 @@
   // Single key for the whole user — only one project is open at a time and
   // tag names rarely collide cross-project.
   let filterTags = $state<string[]>([]);
+  let filterPriorities = $state<Priority[]>([]);
   let stateFilter = $state<StateFilter>("any");
 
-  const filtersActive = $derived(filterTags.length > 0 || stateFilter !== "any");
+  const filtersActive = $derived(
+    filterTags.length > 0 || filterPriorities.length > 0 || stateFilter !== "any",
+  );
 
   // The modal owns its own "task disappeared" handling — it can decide
   // whether to silently close (view mode / no unsaved edits) or stay open
@@ -83,7 +94,11 @@
     try {
       localStorage.setItem(
         FILTER_STORAGE_KEY,
-        JSON.stringify({ tags: filterTags, state: stateFilter }),
+        JSON.stringify({
+          tags: filterTags,
+          priorities: filterPriorities,
+          state: stateFilter,
+        }),
       );
     } catch {
       // ignore — UI continues to work, filters just won't survive a reload
@@ -103,6 +118,10 @@
     // AND across selected tag chips: every selected tag must be on the task.
     for (const want of filterTags) {
       if (!task.tags.includes(want)) return false;
+    }
+    // OR across selected priority chips: any match passes. Empty = no narrowing.
+    if (filterPriorities.length > 0 && !filterPriorities.includes(task.priority)) {
+      return false;
     }
     if (stateFilter === "ready" && !task.isReady) return false;
     if (stateFilter === "blocked" && task.blockedBy.length === 0) return false;
@@ -147,8 +166,17 @@
     }
   }
 
+  function togglePriorityFilter(p: Priority): void {
+    if (filterPriorities.includes(p)) {
+      filterPriorities = filterPriorities.filter((x) => x !== p);
+    } else {
+      filterPriorities = [...filterPriorities, p];
+    }
+  }
+
   function clearFilters(): void {
     filterTags = [];
+    filterPriorities = [];
     stateFilter = "any";
   }
 
@@ -157,9 +185,19 @@
     try {
       const raw = localStorage.getItem(FILTER_STORAGE_KEY);
       if (raw) {
-        const parsed = JSON.parse(raw) as { tags?: unknown; state?: unknown };
+        const parsed = JSON.parse(raw) as {
+          tags?: unknown;
+          priorities?: unknown;
+          state?: unknown;
+        };
         if (Array.isArray(parsed.tags) && parsed.tags.every((v) => typeof v === "string")) {
           filterTags = parsed.tags;
+        }
+        if (
+          Array.isArray(parsed.priorities) &&
+          parsed.priorities.every((v) => v === 0 || v === 1 || v === 2 || v === 3)
+        ) {
+          filterPriorities = parsed.priorities as Priority[];
         }
         if (
           typeof parsed.state === "string" &&
@@ -367,6 +405,22 @@
             onclick={() => (stateFilter = opt)}
           >
             {opt === "any" ? "All" : opt[0].toUpperCase() + opt.slice(1)}
+          </button>
+        {/each}
+      </div>
+
+      <div class="flex flex-wrap items-center gap-1">
+        {#each PRIORITY_CHIPS as chip (chip.value)}
+          {@const active = filterPriorities.includes(chip.value)}
+          <button
+            type="button"
+            class="flex items-center gap-1 rounded-full border border-base-content/20 px-2 py-0.5 text-xs transition-opacity"
+            class:opacity-40={!active}
+            aria-pressed={active}
+            onclick={() => togglePriorityFilter(chip.value)}
+          >
+            <span class="inline-block h-2 w-2 rounded-full {chip.dotClass}"></span>
+            <span class="capitalize">{chip.label}</span>
           </button>
         {/each}
       </div>

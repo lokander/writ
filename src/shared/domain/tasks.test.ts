@@ -83,6 +83,27 @@ describe("listTasks", () => {
     const children = listTasks(db, { parentId: parent.id });
     expect(children).toHaveLength(2);
   });
+
+  it("filters by priorities (OR across the set)", () => {
+    createTask(db, { title: "u", priority: 0 });
+    createTask(db, { title: "h", priority: 1 });
+    createTask(db, { title: "n", priority: 2 });
+    createTask(db, { title: "l", priority: 3 });
+
+    const urgentOnly = listTasks(db, { priorities: [0] }).map((t) => t.title);
+    expect(urgentOnly).toEqual(["u"]);
+
+    const urgentOrHigh = listTasks(db, { priorities: [0, 1] })
+      .map((t) => t.title)
+      .sort();
+    expect(urgentOrHigh).toEqual(["h", "u"]);
+  });
+
+  it("treats an empty priorities array as a no-op", () => {
+    createTask(db, { title: "a", priority: 0 });
+    createTask(db, { title: "b", priority: 2 });
+    expect(listTasks(db, { priorities: [] })).toHaveLength(2);
+  });
 });
 
 describe("updateTask", () => {
