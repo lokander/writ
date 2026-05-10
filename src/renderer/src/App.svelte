@@ -16,7 +16,7 @@
   type StateFilter = "any" | "ready" | "blocked";
   type View = "kanban" | "list";
   const STATE_FILTERS: StateFilter[] = ["any", "ready", "blocked"];
-  const VIEWS: View[] = ["kanban", "list"];
+  const VIEWS: View[] = ["list", "kanban"];
   const FILTER_STORAGE_KEY = "writ:filter";
   const VIEW_STORAGE_KEY = "writ:view";
 
