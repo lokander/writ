@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { Command } from "commander";
+import pkg from "../../package.json" with { type: "json" };
 import { completionCommand } from "./commands/completion";
 import { initCommand } from "./commands/init";
 import { mcpCommand } from "./commands/mcp";
@@ -20,7 +21,7 @@ async function main(): Promise<void> {
   const program = new Command()
     .name("writ")
     .description("A glorified TODO app — CLI")
-    .version("0.0.1");
+    .version(pkg.version);
 
   program.addCommand(initCommand());
   program.addCommand(taskCommand());
