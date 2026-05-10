@@ -1,6 +1,13 @@
 <script lang="ts">
   import { untrack } from "svelte";
-  import { XIcon, TrashIcon, PlusIcon, PencilSimpleIcon, LockSimpleIcon } from "phosphor-svelte";
+  import {
+    XIcon,
+    TrashIcon,
+    PlusIcon,
+    PencilSimpleIcon,
+    LockSimpleIcon,
+    WarningIcon,
+  } from "phosphor-svelte";
 
   import type { Priority, Task } from "../../../shared/types";
   import { PRIORITY_NAMES } from "../../../shared/types";
@@ -16,21 +23,50 @@
   import TaskRefRow from "./TaskRefRow.svelte";
 
   interface Props {
-    task: Task;
+    /** The task this modal is editing. Looked up live from `writState.tasks`
+     *  so external pushes (silent refresh) flow in. The parent only opens
+     *  the modal for tasks that exist at click time; if the row is missing
+     *  at mount we treat that as a parent bug and bail via onClose. */
+    taskId: string;
     /** Mode the modal opens in. The context-menu "Edit task…" entry passes
      *  `"edit"` so the user lands directly in the form; clicking a card
      *  defaults to `"view"`. Captured-on-mount via untrack — the parent keys
-     *  the modal on task.id, so a switch remounts and re-reads this. */
+     *  the modal on taskId, so a switch remounts and re-reads this. */
     initialMode?: "view" | "edit";
     onClose: () => void;
     onSwitch: (id: string) => void;
   }
 
-  const { task, initialMode = "view", onClose, onSwitch }: Props = $props();
+  const { taskId, initialMode = "view", onClose, onSwitch }: Props = $props();
 
   let mode = $state<"view" | "edit">(untrack(() => initialMode));
 
-  // The modal is keyed by `task.id` in the parent (App.svelte), so a switch
+  // Live row from writState. Goes null when the underlying task is deleted
+  // by another writer (CLI / MCP / sqlite cli) — the silent-refresh push
+  // surfaces that here as a transition to null.
+  const liveTask = $derived(writState.tasks.find((t) => t.id === taskId) ?? null);
+
+  // Snapshot for stale rendering: tracks the latest seen task data so the
+  // modal can keep displaying the chrome (title bar, badges, blocked-by row)
+  // even after the live row disappears. Freezes when liveTask becomes null.
+  // Initialized from the live row at mount; the parent guarantees it exists
+  // there, so the assert holds in practice.
+  let snapshotTask = $state<Task>(
+    untrack(() => {
+      const t = writState.tasks.find((tt) => tt.id === taskId);
+      if (!t) throw new Error(`TaskEditModal mounted for unknown task ${taskId}`);
+      return t;
+    }),
+  );
+
+  $effect(() => {
+    if (liveTask !== null) snapshotTask = liveTask;
+  });
+
+  const task = $derived<Task>(liveTask ?? snapshotTask);
+  const taskGone = $derived(liveTask === null);
+
+  // The modal is keyed by `taskId` in the parent (App.svelte), so a switch
   // to a different task remounts the component and these initializers re-run.
   // `untrack` tells svelte-check that capturing only the initial value is
   // intentional, not a missed reactivity bug.
@@ -68,7 +104,7 @@
       dependsOnDirty,
   );
 
-  const canSave = $derived(dirty && title.trim().length > 0 && !saving);
+  const canSave = $derived(dirty && title.trim().length > 0 && !saving && !taskGone);
 
   // Self + all descendants — passed to the parent picker as excludeIds so the
   // user can't make a cycle.
@@ -229,6 +265,22 @@
     onclick={() => tryDiscardingAction(onClose)}
   ></button>
   <form class="modal-box w-[70vw] max-w-none" onsubmit={onSubmit}>
+    {#if taskGone}
+      <div class="alert alert-warning mb-4">
+        <WarningIcon size={18} weight="fill" />
+        <div>
+          <div class="font-semibold">Deleted by another writer</div>
+          <div class="text-sm opacity-80">
+            {#if mode === "edit" && dirty}
+              Your unsaved edits are still here — copy them out before closing.
+            {:else}
+              This task no longer exists. Close when ready.
+            {/if}
+          </div>
+        </div>
+      </div>
+    {/if}
+
     {#if mode === "view"}
       <div class="mb-4 flex items-start justify-between gap-3">
         <h2 id="task-modal-title" class="select-text text-2xl font-semibold leading-tight">
@@ -379,7 +431,12 @@
       <div class="mb-2 flex items-center justify-between">
         <span class="label-text font-medium">Subtasks ({children.length})</span>
         {#if !addingSubtask}
-          <button type="button" class="btn btn-ghost btn-sm" onclick={() => (addingSubtask = true)}>
+          <button
+            type="button"
+            class="btn btn-ghost btn-sm"
+            onclick={() => (addingSubtask = true)}
+            disabled={taskGone}
+          >
             <PlusIcon size={14} weight="bold" />
             Subtask
           </button>
@@ -447,6 +504,7 @@
         type="button"
         class="btn btn-error btn-outline"
         onclick={() => (confirmingDelete = true)}
+        disabled={taskGone}
       >
         <TrashIcon size={16} weight="bold" />
         Delete

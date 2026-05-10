@@ -63,14 +63,10 @@
 
   const filtersActive = $derived(filterTags.length > 0 || stateFilter !== "any");
 
-  const editingTask = $derived(
-    editingTaskId === null ? null : (writState.tasks.find((t) => t.id === editingTaskId) ?? null),
-  );
-
-  // If the task being edited disappears (e.g. deleted), close the modal.
-  $effect(() => {
-    if (editingTaskId !== null && editingTask === null) editingTaskId = null;
-  });
+  // The modal owns its own "task disappeared" handling — it can decide
+  // whether to silently close (view mode / no unsaved edits) or stay open
+  // with a "deleted by another writer" banner so the user doesn't lose
+  // unsaved work to a CLI/MCP delete that lands mid-edit.
 
   // Default the active tab to the first column once columns load. Re-runs if
   // the columns list changes; doesn't override an already-set active tab as
@@ -427,10 +423,10 @@
     {/if}
   {/if}
 
-  {#if editingTask}
+  {#if editingTaskId !== null}
     {#key editingTaskId}
       <TaskEditModal
-        task={editingTask}
+        taskId={editingTaskId}
         initialMode={editingInitialMode}
         onClose={() => (editingTaskId = null)}
         onSwitch={(id) => openTaskModal(id)}
