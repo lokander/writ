@@ -26,6 +26,7 @@
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import ConflictDialog from "./ConflictDialog.svelte";
   import DependsOnPicker from "./DependsOnPicker.svelte";
+  import Modal from "./Modal.svelte";
   import ParentPicker from "./ParentPicker.svelte";
   import TagChip from "./TagChip.svelte";
   import TagPicker from "./TagPicker.svelte";
@@ -405,29 +406,18 @@
 <svelte:window onkeydown={onKeydown} />
 
 <!-- Stack semantics: lower entries stay mounted AND visible — the topmost
-     modal's backdrop covers them, and `inert` blocks any tab / click /
-     screen-reader input from sneaking through. Hiding lower modals via
-     display:none caused a brief backdrop flash on push/pop as the
-     underlying layer toggled in. z-index 900 + (10 × stackIndex) keeps
-     each stacked instance above the one below it while staying clear of
-     ConfirmDialog (1100) and ToastStack (1200). The isTop gate on
-     onKeydown above silences window-bound event handlers from lower
-     modals (which inert doesn't reach since they're window-level). -->
-<div
-  class="modal modal-open"
-  role="dialog"
-  aria-modal="true"
-  aria-labelledby="task-modal-title"
-  tabindex="-1"
-  inert={!isTop}
-  style:z-index={900 + stackIndex * 10}
+     modal's backdrop covers them, and Modal's `inert={!isTop}` blocks any
+     tab / click / screen-reader input from sneaking through. z-index
+     900 + (10 × stackIndex) keeps each stacked instance above the one
+     below it while staying clear of ConfirmDialog (1100) and ToastStack
+     (1200). The isTop gate on onKeydown above silences window-bound Esc
+     handlers from lower modals (which inert doesn't reach). -->
+<Modal
+  {isTop}
+  zIndex={900 + stackIndex * 10}
+  ariaLabelledBy="task-modal-title"
+  onBackdropClick={() => tryDiscardingAction(onClose)}
 >
-  <button
-    type="button"
-    class="modal-backdrop"
-    aria-label="Close"
-    onclick={() => tryDiscardingAction(onClose)}
-  ></button>
   <form class="modal-box w-[70vw] max-w-none" onsubmit={onSubmit}>
     {#if taskGone}
       <div class="alert alert-warning mb-4">
@@ -697,7 +687,7 @@
       </div>
     </div>
   </form>
-</div>
+</Modal>
 
 {#if pendingDiscardAction}
   <ConfirmDialog

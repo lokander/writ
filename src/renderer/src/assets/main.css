@@ -33,6 +33,34 @@ textarea,
   user-select: text;
 }
 
+/* Global modal overrides. All modals in the app use DaisyUI's `.modal` via
+   `lib/Modal.svelte`; these rules retune the defaults uniformly:
+   - The wrapper owns scrolling instead of the modal-box, so the scrollbar
+     runs along the window's right edge rather than being cropped to the
+     modal's corner. The previous per-modal flag for this lived as a scoped
+     `.task-edit-modal` class — promoted to global since every modal
+     benefits.
+   - `justify-content: safe center` keeps short content visually centered
+     but anchors tall content at the top so users can scroll to the head.
+   - `padding-block` keeps the modal-box from butting up against the
+     viewport edges when scrolled to either extreme.
+   - `backdrop-filter` adds the frosted-glass look that ConfirmDialog
+     already used; now applied uniformly across all modals. */
+.modal {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: safe center;
+  overflow-y: auto;
+  padding-block: 1rem;
+  backdrop-filter: blur(2px);
+}
+.modal .modal-box {
+  max-height: none;
+  overflow-y: visible;
+  flex-shrink: 0;
+}
+
 /* Inline task id links emitted by lib/markdown.ts linkifyTaskIds().
    Styled like a low-key chip rather than a generic prose hyperlink — they
    don't navigate, they switch the open modal to that task. Specificity

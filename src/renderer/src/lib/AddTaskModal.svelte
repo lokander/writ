@@ -5,6 +5,7 @@
   import { PRIORITY_NAMES } from "../../../shared/types";
   import { writState } from "./state.svelte";
   import DependsOnPicker from "./DependsOnPicker.svelte";
+  import Modal from "./Modal.svelte";
   import ParentPicker from "./ParentPicker.svelte";
   import TagPicker from "./TagPicker.svelte";
 
@@ -52,14 +53,7 @@
 
 <svelte:window onkeydown={onKeydown} />
 
-<div
-  class="modal modal-open"
-  role="dialog"
-  aria-modal="true"
-  aria-labelledby="add-task-modal-title"
-  tabindex="-1"
->
-  <button type="button" class="modal-backdrop" aria-label="Close" onclick={onClose}></button>
+<Modal ariaLabelledBy="add-task-modal-title" onBackdropClick={onClose}>
   <form class="modal-box w-[70vw] max-w-none" onsubmit={onSubmit}>
     <div class="mb-4 flex items-baseline justify-between gap-3">
       <h2 id="add-task-modal-title" class="text-lg font-semibold">New task</h2>
@@ -102,4 +96,4 @@
       <button type="submit" class="btn btn-primary" disabled={!canSave}>Create</button>
     </div>
   </form>
-</div>
+</Modal>

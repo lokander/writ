@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { portal } from "./portal";
+  import Modal from "./Modal.svelte";
 
   interface Props {
     title: string;
@@ -47,23 +47,11 @@
 
 <svelte:window onkeydown={onKeydown} />
 
-<!-- Portaled to <body> so it escapes the underlying modal-box's transform
-     containment. z-[1100] sits above the modal (DaisyUI z-999) and above
-     Combobox dropdowns (z-[1000]). -->
-<div
-  use:portal
-  class="fixed inset-0 z-[1100] flex items-center justify-center p-4"
-  role="dialog"
-  aria-modal="true"
-  aria-labelledby="confirm-dialog-title"
->
-  <button
-    type="button"
-    class="absolute inset-0 bg-black/40 backdrop-blur-sm"
-    aria-label="Cancel"
-    onclick={onCancel}
-  ></button>
-  <div class="relative w-full max-w-sm rounded-box bg-base-100 p-6 shadow-2xl">
+<!-- zIndex 1100 sits above the modal layer (TaskEditModal's stacked
+     instances run 900–940, ToastStack is 1200) so a Discard-or-Delete
+     confirm always paints over its parent modal. -->
+<Modal zIndex={1100} ariaLabelledBy="confirm-dialog-title" onBackdropClick={onCancel}>
+  <div class="w-full max-w-sm rounded-box bg-base-100 p-6 shadow-2xl">
     <h3 id="confirm-dialog-title" class="text-lg font-semibold">{title}</h3>
     {#if message}
       <p class="mt-2 text-sm opacity-70">{message}</p>
@@ -89,4 +77,4 @@
       </button>
     </div>
   </div>
-</div>
+</Modal>
