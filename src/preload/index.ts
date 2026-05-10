@@ -6,6 +6,8 @@ import type { Column, NewTask, ProjectInfo, Tag, Task, TaskUpdate } from "../sha
 const api = {
   project: {
     current: (): Promise<ProjectInfo | null> => ipcRenderer.invoke("project:current"),
+    setDisplayName: (name: string | null): Promise<ProjectInfo> =>
+      ipcRenderer.invoke("project:setDisplayName", name),
   },
   columns: {
     list: (): Promise<Column[]> => ipcRenderer.invoke("columns:list"),

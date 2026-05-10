@@ -22,6 +22,11 @@
 
   let activeColumnId = $state<string | null>(null);
   let editingTaskId = $state<string | null>(null);
+  // Inline rename for the project display name in the header. Click the
+  // name → swap to an input. Enter / blur saves; Esc cancels; empty value
+  // clears the override and falls back to the cwd basename.
+  let renamingProject = $state(false);
+  let renameValue = $state("");
   // Captured fresh each time the modal opens; the modal reads it once on
   // mount via untrack. Card clicks land in "view"; context-menu Edit lands
   // in "edit".
@@ -195,6 +200,29 @@
     showAddModal = false;
   }
 
+  // Last segment of a path, regardless of separator. The renderer doesn't
+  // import node:path; this is fine for both POSIX and Windows roots.
+  function basenameOf(path: string): string {
+    const segments = path.split(/[/\\]/).filter((s) => s.length > 0);
+    return segments[segments.length - 1] ?? path;
+  }
+
+  function startRename(): void {
+    renameValue = writState.project?.displayName ?? "";
+    renamingProject = true;
+  }
+
+  async function commitRename(): Promise<void> {
+    if (!renamingProject) return;
+    const trimmed = renameValue.trim();
+    renamingProject = false;
+    await writState.setDisplayName(trimmed.length === 0 ? null : trimmed);
+  }
+
+  function cancelRename(): void {
+    renamingProject = false;
+  }
+
   function openTaskModal(id: string, mode: "view" | "edit" = "view"): void {
     editingInitialMode = mode;
     editingTaskId = id;
@@ -245,12 +273,51 @@
     class="grid min-h-16 grid-cols-3 items-center gap-3 border-b border-base-300 bg-base-200 px-4"
   >
     <div class="flex min-w-0 items-center gap-3">
-      <NotepadIcon size={24} weight="duotone" />
-      <h1 class="text-lg font-semibold">writ</h1>
+      <span class="flex shrink-0 items-center">
+        <NotepadIcon size={24} weight="duotone" />
+        <h1 class="font-mono text-lg font-semibold ml-1">writ</h1>
+      </span>
       {#if writState.project}
-        <span class="truncate text-xs opacity-60" title={writState.project.root}>
-          {writState.project.root}
-        </span>
+        {@const usingFallback = writState.project.displayName === null}
+        {@const displayed = writState.project.displayName ?? basenameOf(writState.project.root)}
+        <span class="shrink-0 font-mono text-lg opacity-30" aria-hidden="true">::</span>
+        {#if renamingProject}
+          <!-- svelte-ignore a11y_autofocus -->
+          <input
+            type="text"
+            class="min-w-0 flex-1 truncate rounded border border-base-content/30 bg-transparent px-2 py-0.5 font-mono text-lg outline-none focus:border-primary"
+            placeholder={basenameOf(writState.project.root)}
+            bind:value={renameValue}
+            onkeydown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                commitRename();
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                cancelRename();
+              }
+            }}
+            onblur={commitRename}
+            autofocus
+          />
+        {:else}
+          <button
+            type="button"
+            class="shrink-0 cursor-pointer truncate font-mono text-lg hover:opacity-100"
+            class:opacity-60={usingFallback}
+            class:opacity-80={!usingFallback}
+            title="Edit project name"
+            onclick={startRename}
+          >
+            {displayed}
+          </button>
+          <span
+            class="min-w-0 flex-1 truncate font-mono text-xs opacity-40"
+            title={writState.project.root}
+          >
+            {writState.project.prettyRoot}
+          </span>
+        {/if}
       {/if}
     </div>
     <div class="flex justify-center">

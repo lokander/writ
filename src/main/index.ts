@@ -1,11 +1,18 @@
 import { app, shell, BrowserWindow, ipcMain } from "electron";
+import { homedir } from "os";
 import { join } from "path";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import icon from "../../resources/icon.png?asset";
 
 import { applyMigrations, openDatabase, type SqliteDb } from "../shared/db";
 import { listColumns } from "../shared/domain/columns";
-import { findProjectRoot, getDbPath } from "../shared/domain/project";
+import {
+  findProjectRoot,
+  getDbPath,
+  getDisplayName,
+  getProjectId,
+  setDisplayName,
+} from "../shared/domain/project";
 import { listTags } from "../shared/domain/tags";
 import { createTask, deleteTask, listTasks, updateTask } from "../shared/domain/tasks";
 import type { NewTask, ProjectInfo, TaskUpdate } from "../shared/types";
@@ -27,6 +34,28 @@ function isAllowedExternalUrl(url: string): boolean {
   }
 }
 
+/** Replace a leading $HOME with `~` for nicer display. Falls back to the
+ *  raw path when home isn't available or the path lives elsewhere. */
+function prettifyRoot(root: string): string {
+  const home = homedir();
+  if (!home) return root;
+  if (root === home) return "~";
+  if (root.startsWith(home + "/") || root.startsWith(home + "\\")) {
+    return "~" + root.slice(home.length);
+  }
+  return root;
+}
+
+function buildProjectInfo(root: string, dbPath: string, db: SqliteDb): ProjectInfo {
+  return {
+    root,
+    prettyRoot: prettifyRoot(root),
+    dbPath,
+    projectId: getProjectId(db),
+    displayName: getDisplayName(db),
+  };
+}
+
 function openCurrentProject(): void {
   // Slice 1 of the renderer: resolve from cwd. The packaged `writ` shim will
   // launch with the user's cwd; a richer project picker (writ task 44ZCQS)
@@ -36,7 +65,7 @@ function openCurrentProject(): void {
   const dbPath = getDbPath(root);
   currentDb = openDatabase(dbPath);
   applyMigrations(currentDb);
-  currentProject = { root, dbPath };
+  currentProject = buildProjectInfo(root, dbPath, currentDb);
 }
 
 function closeCurrentProject(): void {
@@ -46,7 +75,19 @@ function closeCurrentProject(): void {
 }
 
 function registerIpcHandlers(): void {
-  ipcMain.handle("project:current", () => currentProject);
+  ipcMain.handle("project:current", () => {
+    if (!currentDb || !currentProject) return null;
+    // Refresh displayName each call so the renderer's first paint after a
+    // CLI-side `writ project rename` reflects the new value without
+    // requiring an app restart.
+    return buildProjectInfo(currentProject.root, currentProject.dbPath, currentDb);
+  });
+  ipcMain.handle("project:setDisplayName", (_event, name: string | null) => {
+    if (!currentDb || !currentProject) throw new Error("No project open");
+    setDisplayName(currentDb, name);
+    currentProject = buildProjectInfo(currentProject.root, currentProject.dbPath, currentDb);
+    return currentProject;
+  });
   ipcMain.handle("columns:list", () => (currentDb ? listColumns(currentDb) : []));
   ipcMain.handle("tasks:list", () => (currentDb ? listTasks(currentDb) : []));
   ipcMain.handle("tasks:create", (_event, input: NewTask) => {

@@ -39,6 +39,16 @@ export class WritState {
     }
   }
 
+  /** Set or clear the project's display name. Pass null to clear the
+   *  override and fall back to the cwd basename. */
+  async setDisplayName(name: string | null): Promise<void> {
+    try {
+      this.project = await window.api.project.setDisplayName(name);
+    } catch (e) {
+      this.error = e instanceof Error ? e.message : String(e);
+    }
+  }
+
   async createTask(input: NewTask): Promise<Task | null> {
     const trimmed = input.title.trim();
     if (trimmed.length === 0) return null;
