@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain } from "electron";
+import { app, shell, BrowserWindow, dialog, ipcMain } from "electron";
 import * as fs from "node:fs";
 import * as net from "node:net";
 import { homedir } from "os";
@@ -24,7 +24,13 @@ import {
   StaleReadError,
   updateTask,
 } from "../shared/domain/tasks";
-import type { NewTask, ProjectInfo, TaskUpdate, UpdateTaskResult } from "../shared/types";
+import type {
+  NewTask,
+  OpenFolderResult,
+  ProjectInfo,
+  TaskUpdate,
+  UpdateTaskResult,
+} from "../shared/types";
 
 let currentDb: SqliteDb | null = null;
 let currentProject: ProjectInfo | null = null;
@@ -76,12 +82,7 @@ function buildProjectInfo(root: string, dbPath: string, db: SqliteDb): ProjectIn
   };
 }
 
-function openCurrentProject(): void {
-  // Slice 1 of the renderer: resolve from cwd. The packaged `writ` shim will
-  // launch with the user's cwd; a richer project picker (writ task 44ZCQS)
-  // covers double-click and "no project here" paths later.
-  const root = findProjectRoot(process.cwd());
-  if (!root) return;
+function openProjectAt(root: string): void {
   const dbPath = getDbPath(root);
   currentDb = openDatabase(dbPath);
   applyMigrations(currentDb);
@@ -94,6 +95,35 @@ function closeCurrentProject(): void {
   currentDb?.close();
   currentDb = null;
   currentProject = null;
+}
+
+/** Boot path: resolve a project from cwd, if any. The CLI's bare-`writ`
+ *  branch spawns Electron in the user's cwd, so this is the natural seed.
+ *  When no project is found the renderer shows its empty state with the
+ *  "Open project…" picker. */
+function bootProject(): void {
+  const root = findProjectRoot(process.cwd());
+  if (root) openProjectAt(root);
+}
+
+/** Switch the open project (or close it if `newRoot` is null). No-op if the
+ *  caller passes the root that's already open. Does NOT broadcast on its own
+ *  — callers decide whether to fire `project:changed` so e.g. the openFolder
+ *  error path can avoid a race where the renderer's silent refetch clears the
+ *  error message we're about to surface. */
+function switchProject(newRoot: string | null): void {
+  if (currentProject?.root === newRoot) return;
+  closeCurrentProject();
+  if (newRoot) openProjectAt(newRoot);
+}
+
+function focusMainWindow(): void {
+  const wins = BrowserWindow.getAllWindows();
+  if (wins.length === 0) return;
+  const win = wins[0]!;
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
 }
 
 function broadcastProjectChanged(): void {
@@ -144,18 +174,38 @@ function startPingServer(): void {
 function handlePingLine(line: string): void {
   const trimmed = line.trim();
   if (trimmed.length === 0) return;
-  let msg: { root?: unknown };
+  let msg: { type?: unknown; root?: unknown };
   try {
     msg = JSON.parse(trimmed);
   } catch {
     return;
   }
-  if (typeof msg.root !== "string") return;
-  // Filter by project root so a ping for project A doesn't refresh a window
-  // viewing project B. Once we support multiple open projects, this turns
-  // into a per-window match.
-  if (currentProject?.root !== msg.root) return;
-  broadcastProjectChanged();
+  // Two message types share the socket; an absent `type` is treated as
+  // "changed" so an in-flight CLI/MCP from an older build still works.
+  const type = typeof msg.type === "string" ? msg.type : "changed";
+
+  if (type === "changed") {
+    if (typeof msg.root !== "string") return;
+    // Filter by project root so a ping for project A doesn't refresh a window
+    // viewing project B.
+    if (currentProject?.root !== msg.root) return;
+    broadcastProjectChanged();
+    return;
+  }
+
+  if (type === "open") {
+    // The CLI resolves `findProjectRoot(cwd)` before sending, so `root` is
+    // either an actual project root or null (cwd had no .writ/). Trust it.
+    const root = typeof msg.root === "string" ? msg.root : null;
+    // Bare `writ` from a writ-less cwd: focus only, don't wipe the user's
+    // current project. The file-dialog picker is the explicit-switch path.
+    if (root !== null || currentProject === null) {
+      switchProject(root);
+      broadcastProjectChanged();
+    }
+    focusMainWindow();
+    return;
+  }
 }
 
 function stopPingServer(): void {
@@ -217,6 +267,49 @@ function registerIpcHandlers(): void {
     currentProject = buildProjectInfo(currentProject.root, currentProject.dbPath, currentDb);
     noteSelfWrite();
     return currentProject;
+  });
+  ipcMain.handle("project:openFolder", async (event): Promise<OpenFolderResult> => {
+    // Tie the dialog to the requesting window so it's modal on platforms
+    // that support it (macOS sheet, Windows owner). Falls back to standalone
+    // if the call somehow comes in without a sender window.
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const result = win
+      ? await dialog.showOpenDialog(win, {
+          title: "Open writ project",
+          properties: ["openDirectory"],
+        })
+      : await dialog.showOpenDialog({
+          title: "Open writ project",
+          properties: ["openDirectory"],
+        });
+    if (result.canceled || result.filePaths.length === 0) {
+      return { canceled: true };
+    }
+    const chosen = result.filePaths[0]!;
+    // Walk up from the chosen path so picking a subdir of a project still
+    // works (matches what the CLI does for `writ task add` from a subdir).
+    const root = findProjectRoot(chosen);
+    if (!root) {
+      // Explicit user pick that wasn't a writ project. Drop the current
+      // project so the renderer's empty state surfaces the error as the
+      // explanation for the switch — gives the user a clean place to either
+      // pick a different folder or (future task) init this one. Skip the
+      // broadcast: the caller pairs the IPC return with its own silent
+      // loadAll + error set, so the message survives without a parallel
+      // refetch racing to clear it.
+      closeCurrentProject();
+      return {
+        error: `No writ project found at ${chosen}. Run \`writ init\` there first.`,
+      };
+    }
+    switchProject(root);
+    broadcastProjectChanged();
+    if (!currentProject) {
+      // switchProject failed silently — surface a generic error rather than
+      // pretending the open succeeded.
+      return { error: "Failed to open the selected project." };
+    }
+    return { project: currentProject };
   });
   ipcMain.handle("columns:list", () => (currentDb ? listColumns(currentDb) : []));
   ipcMain.handle("tasks:list", () => (currentDb ? listTasks(currentDb) : []));
@@ -313,7 +406,7 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window);
   });
 
-  openCurrentProject();
+  bootProject();
   registerIpcHandlers();
   startPingServer();
   createWindow();

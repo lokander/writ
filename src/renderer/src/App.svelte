@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import {
     FlagIcon,
+    FolderOpenIcon,
     FunnelIcon,
     KanbanIcon,
     ListIcon,
@@ -356,6 +357,27 @@
     contextMenuDeleteFor = null;
     await writState.deleteTask(id);
   }
+
+  // Switch to a different writ project via native folder picker. Cancel is a
+  // no-op. A folder without `.writ/writ.db` switches to the empty state with
+  // the error rendered inline (main has already cleared currentProject). On
+  // success, main has swapped currentProject; we refetch so the UI redraws.
+  async function openProjectFolder(): Promise<void> {
+    try {
+      const result = await window.api.project.openFolder();
+      if ("canceled" in result) return;
+      if ("error" in result) {
+        // Main skipped the broadcast on the error path so this silent refetch
+        // doesn't race the error setter that follows it.
+        await writState.loadAll({ silent: true });
+        writState.error = result.error;
+        return;
+      }
+      await writState.loadAll();
+    } catch (e) {
+      writState.error = e instanceof Error ? e.message : String(e);
+    }
+  }
 </script>
 
 <main class="flex h-full flex-col bg-base-100 text-base-content">
@@ -411,7 +433,7 @@
       {/if}
     </div>
     <div class="flex justify-center">
-      {#if writState.project && !writState.loading && !writState.error}
+      {#if writState.project && !writState.loading}
         <div class="join">
           {#each VIEWS as v (v)}
             <button
@@ -431,8 +453,19 @@
         </div>
       {/if}
     </div>
-    <div class="flex justify-end">
-      {#if writState.project && !writState.loading && !writState.error}
+    <div class="flex justify-end gap-1">
+      {#if !writState.loading}
+        <button
+          type="button"
+          class="btn btn-ghost btn-xs"
+          onclick={openProjectFolder}
+          title="Open another writ project…"
+          aria-label="Open project"
+        >
+          <FolderOpenIcon size={14} weight="bold" />
+        </button>
+      {/if}
+      {#if writState.project && !writState.loading}
         <button type="button" class="btn btn-primary btn-xs" onclick={() => (showAddModal = true)}>
           <PlusIcon size={12} weight="bold" />
           New task
@@ -444,10 +477,18 @@
   {#if writState.loading}
     <div class="flex flex-1 items-center justify-center text-base-content/60">Loading…</div>
   {:else if !writState.project}
-    <div class="flex flex-1 flex-col items-center justify-center gap-2 px-4 text-center">
-      <p>No writ project found.</p>
+    <div class="flex flex-1 flex-col items-center justify-center gap-3 px-4 text-center">
+      {#if writState.error}
+        <div class="alert alert-error max-w-2xl">{writState.error}</div>
+      {:else}
+        <p>No writ project found.</p>
+      {/if}
+      <button type="button" class="btn btn-primary btn-sm" onclick={openProjectFolder}>
+        <FolderOpenIcon size={14} weight="bold" />
+        Open project…
+      </button>
       <p class="text-sm opacity-60">
-        Run <code class="kbd">writ init</code> in the directory you started the app from.
+        Or run <code class="kbd">writ init</code> in a project directory.
       </p>
     </div>
   {:else}

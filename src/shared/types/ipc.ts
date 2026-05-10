@@ -28,3 +28,9 @@ export interface UpdateTaskResult {
   task: Task | null;
   conflict?: { error: "stale-read"; current: Task };
 }
+
+/** Result of `project:openFolder`. The renderer branches on the discriminator:
+ *  `canceled` → user dismissed the dialog (no-op), `error` → folder didn't
+ *  contain a writ project (show the message inline), `project` → switched and
+ *  the new ProjectInfo is attached so the renderer can refresh state. */
+export type OpenFolderResult = { canceled: true } | { error: string } | { project: ProjectInfo };

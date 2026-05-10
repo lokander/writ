@@ -4,6 +4,7 @@ import { electronAPI } from "@electron-toolkit/preload";
 import type {
   Column,
   NewTask,
+  OpenFolderResult,
   ProjectInfo,
   Tag,
   Task,
@@ -16,6 +17,7 @@ const api = {
     current: (): Promise<ProjectInfo | null> => ipcRenderer.invoke("project:current"),
     setDisplayName: (name: string | null): Promise<ProjectInfo> =>
       ipcRenderer.invoke("project:setDisplayName", name),
+    openFolder: (): Promise<OpenFolderResult> => ipcRenderer.invoke("project:openFolder"),
   },
   columns: {
     list: (): Promise<Column[]> => ipcRenderer.invoke("columns:list"),
