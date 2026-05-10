@@ -118,34 +118,37 @@ export function taskCommand(): Command {
       collectString,
     )
     .action((title: string, opts: AddOptions) => {
-      withProjectDb(({ db }) => {
-        let columnId: string | undefined;
-        if (opts.col) {
-          const col = getColumnByName(db, opts.col);
-          if (!col) {
-            throw new Error(`Column '${opts.col}' not found. ${availableColumns(db)}`);
+      withProjectDb(
+        ({ db }) => {
+          let columnId: string | undefined;
+          if (opts.col) {
+            const col = getColumnByName(db, opts.col);
+            if (!col) {
+              throw new Error(`Column '${opts.col}' not found. ${availableColumns(db)}`);
+            }
+            columnId = col.id;
           }
-          columnId = col.id;
-        }
 
-        let parentId: string | null | undefined;
-        if (opts.parent) {
-          parentId = resolveTaskId(db, opts.parent).id;
-        }
+          let parentId: string | null | undefined;
+          if (opts.parent) {
+            parentId = resolveTaskId(db, opts.parent).id;
+          }
 
-        const dependsOn = opts.dependsOn?.map((ref) => resolveTaskId(db, ref).id);
+          const dependsOn = opts.dependsOn?.map((ref) => resolveTaskId(db, ref).id);
 
-        const task = createTask(db, {
-          title,
-          description: opts.description,
-          columnId,
-          parentId,
-          priority: opts.priority,
-          tags: opts.tag,
-          dependsOn,
-        });
-        console.log(`Created ${task.id.slice(-6)}  ${task.title}`);
-      });
+          const task = createTask(db, {
+            title,
+            description: opts.description,
+            columnId,
+            parentId,
+            priority: opts.priority,
+            tags: opts.tag,
+            dependsOn,
+          });
+          console.log(`Created ${task.id.slice(-6)}  ${task.title}`);
+        },
+        { notify: true },
+      );
     });
 
   cmd
@@ -256,26 +259,32 @@ export function taskCommand(): Command {
     .command("move <id> <column>")
     .description("Move a task to a different column (case-insensitive)")
     .action((idInput: string, columnName: string) => {
-      withProjectDb(({ db }) => {
-        const task = resolveTaskId(db, idInput);
-        const col = getColumnByName(db, columnName);
-        if (!col) {
-          throw new Error(`Column '${columnName}' not found. ${availableColumns(db)}`);
-        }
-        moveTask(db, task.id, col.id);
-        console.log(`Moved ${task.id.slice(-6)}  ${task.title}  →  ${col.name}`);
-      });
+      withProjectDb(
+        ({ db }) => {
+          const task = resolveTaskId(db, idInput);
+          const col = getColumnByName(db, columnName);
+          if (!col) {
+            throw new Error(`Column '${columnName}' not found. ${availableColumns(db)}`);
+          }
+          moveTask(db, task.id, col.id);
+          console.log(`Moved ${task.id.slice(-6)}  ${task.title}  →  ${col.name}`);
+        },
+        { notify: true },
+      );
     });
 
   cmd
     .command("rm <id>")
     .description("Delete a task and its subtasks")
     .action((idInput: string) => {
-      withProjectDb(({ db }) => {
-        const task = resolveTaskId(db, idInput);
-        deleteTask(db, task.id);
-        console.log(`Deleted ${task.id.slice(-6)}  ${task.title}`);
-      });
+      withProjectDb(
+        ({ db }) => {
+          const task = resolveTaskId(db, idInput);
+          deleteTask(db, task.id);
+          console.log(`Deleted ${task.id.slice(-6)}  ${task.title}`);
+        },
+        { notify: true },
+      );
     });
 
   cmd
@@ -297,29 +306,32 @@ export function taskCommand(): Command {
       collectString,
     )
     .action((idInput: string, opts: EditOptions) => {
-      withProjectDb(({ db }) => {
-        const task = resolveTaskId(db, idInput);
+      withProjectDb(
+        ({ db }) => {
+          const task = resolveTaskId(db, idInput);
 
-        // Direct flag mode: `--tag X --tag Y` (or `--depends-on …`) replaces
-        // the set without opening the editor. Combines if both flags are
-        // passed together.
-        const directUpdates: { tags?: string[]; dependsOn?: string[] } = {};
-        if (opts.tag !== undefined) directUpdates.tags = opts.tag;
-        if (opts.dependsOn !== undefined) {
-          directUpdates.dependsOn = opts.dependsOn.map((ref) => resolveTaskId(db, ref).id);
-        }
-        if (Object.keys(directUpdates).length > 0) {
-          updateTask(db, task.id, directUpdates);
-          const summary = Object.keys(directUpdates).join(", ");
-          console.log(`Updated ${task.id.slice(-6)}  (${summary})`);
-          return;
-        }
+          // Direct flag mode: `--tag X --tag Y` (or `--depends-on …`) replaces
+          // the set without opening the editor. Combines if both flags are
+          // passed together.
+          const directUpdates: { tags?: string[]; dependsOn?: string[] } = {};
+          if (opts.tag !== undefined) directUpdates.tags = opts.tag;
+          if (opts.dependsOn !== undefined) {
+            directUpdates.dependsOn = opts.dependsOn.map((ref) => resolveTaskId(db, ref).id);
+          }
+          if (Object.keys(directUpdates).length > 0) {
+            updateTask(db, task.id, directUpdates);
+            const summary = Object.keys(directUpdates).join(", ");
+            console.log(`Updated ${task.id.slice(-6)}  (${summary})`);
+            return;
+          }
 
-        // Hydrate before opening the editor so the YAML reflects current
-        // tags / depends_on (resolveTaskId returns a stub).
-        const hydrated = getTask(db, task.id) ?? task;
-        editTaskViaEditor(db, hydrated);
-      });
+          // Hydrate before opening the editor so the YAML reflects current
+          // tags / depends_on (resolveTaskId returns a stub).
+          const hydrated = getTask(db, task.id) ?? task;
+          editTaskViaEditor(db, hydrated);
+        },
+        { notify: true },
+      );
     });
 
   return cmd;

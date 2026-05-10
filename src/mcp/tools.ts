@@ -1,6 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { applyMigrations, openDatabase, type SqliteDb } from "../shared/db";
+import { pingDesktopApp } from "../shared/desktop-ping";
 import { getColumnByName, listColumns } from "../shared/domain/columns";
 import { findProjectRoot, getDbPath } from "../shared/domain/project";
 import { listTags } from "../shared/domain/tags";
@@ -42,7 +43,14 @@ function asError(message: string): ToolResult {
   return { content: [{ type: "text", text: message }], isError: true };
 }
 
-function withDb<T>(fn: (db: SqliteDb) => T): ToolResult {
+interface WithDbOptions {
+  /** Fire a best-effort ping at the desktop app socket after `fn` returns
+   *  successfully. Mutating tools (create/update/move/delete) set this so an
+   *  open UI refreshes immediately. Read-only tools leave it off. */
+  notify?: boolean;
+}
+
+function withDb<T>(fn: (db: SqliteDb) => T, options: WithDbOptions = {}): ToolResult {
   let db: SqliteDb | null = null;
   try {
     const root = findProjectRoot(process.cwd());
@@ -54,6 +62,11 @@ function withDb<T>(fn: (db: SqliteDb) => T): ToolResult {
     db = openDatabase(getDbPath(root));
     applyMigrations(db);
     const result = fn(db);
+    if (options.notify) {
+      // Detached: don't await. The MCP server stays up across many calls and
+      // we don't want to block the next tool call on the socket round-trip.
+      void pingDesktopApp({ root });
+    }
     return asJson(result);
   } catch (e) {
     return asError(e instanceof Error ? e.message : String(e));
@@ -257,21 +270,24 @@ export function registerTools(server: McpServer): void {
       },
     },
     async ({ title, description, column, priority, parent_id, tags, depends_on }) =>
-      withDb((db) => {
-        const columnId = column ? resolveColumnId(db, column) : undefined;
-        const parentId = parent_id ? resolveTaskId(db, parent_id).id : undefined;
-        const dependsOn = depends_on?.map((ref) => resolveTaskId(db, ref).id);
-        const created = createTask(db, {
-          title,
-          description,
-          columnId,
-          parentId,
-          priority: priority ? PRIORITY_MAP[priority] : undefined,
-          tags,
-          dependsOn,
-        });
-        return presentFull(created, buildContext(db));
-      }),
+      withDb(
+        (db) => {
+          const columnId = column ? resolveColumnId(db, column) : undefined;
+          const parentId = parent_id ? resolveTaskId(db, parent_id).id : undefined;
+          const dependsOn = depends_on?.map((ref) => resolveTaskId(db, ref).id);
+          const created = createTask(db, {
+            title,
+            description,
+            columnId,
+            parentId,
+            priority: priority ? PRIORITY_MAP[priority] : undefined,
+            tags,
+            dependsOn,
+          });
+          return presentFull(created, buildContext(db));
+        },
+        { notify: true },
+      ),
   );
 
   server.registerTool(
@@ -306,30 +322,33 @@ export function registerTools(server: McpServer): void {
       },
     },
     async ({ id, title, description, column, priority, parent_id, tags, depends_on }) =>
-      withDb((db) => {
-        const task = resolveTaskId(db, id);
-        const update: Parameters<typeof updateTask>[2] = {};
-        if (title !== undefined) update.title = title;
-        if (description !== undefined) update.description = description;
-        if (column !== undefined) update.columnId = resolveColumnId(db, column);
-        if (priority !== undefined) update.priority = PRIORITY_MAP[priority];
-        if (parent_id !== undefined) {
-          if (parent_id === null) {
-            update.parentId = null;
-          } else {
-            const parent = resolveTaskId(db, parent_id);
-            if (parent.id === task.id) throw new Error("A task cannot be its own parent.");
-            update.parentId = parent.id;
+      withDb(
+        (db) => {
+          const task = resolveTaskId(db, id);
+          const update: Parameters<typeof updateTask>[2] = {};
+          if (title !== undefined) update.title = title;
+          if (description !== undefined) update.description = description;
+          if (column !== undefined) update.columnId = resolveColumnId(db, column);
+          if (priority !== undefined) update.priority = PRIORITY_MAP[priority];
+          if (parent_id !== undefined) {
+            if (parent_id === null) {
+              update.parentId = null;
+            } else {
+              const parent = resolveTaskId(db, parent_id);
+              if (parent.id === task.id) throw new Error("A task cannot be its own parent.");
+              update.parentId = parent.id;
+            }
           }
-        }
-        if (tags !== undefined) update.tags = tags;
-        if (depends_on !== undefined) {
-          update.dependsOn = depends_on.map((ref) => resolveTaskId(db, ref).id);
-        }
-        const updated = updateTask(db, task.id, update);
-        if (!updated) throw new Error(`Task ${task.id} disappeared during update.`);
-        return presentFull(updated, buildContext(db));
-      }),
+          if (tags !== undefined) update.tags = tags;
+          if (depends_on !== undefined) {
+            update.dependsOn = depends_on.map((ref) => resolveTaskId(db, ref).id);
+          }
+          const updated = updateTask(db, task.id, update);
+          if (!updated) throw new Error(`Task ${task.id} disappeared during update.`);
+          return presentFull(updated, buildContext(db));
+        },
+        { notify: true },
+      ),
   );
 
   server.registerTool(
@@ -344,13 +363,16 @@ export function registerTools(server: McpServer): void {
       },
     },
     async ({ id, column }) =>
-      withDb((db) => {
-        const task = resolveTaskId(db, id);
-        const columnId = resolveColumnId(db, column);
-        const moved = moveTask(db, task.id, columnId);
-        if (!moved) throw new Error(`Task ${task.id} disappeared during move.`);
-        return presentSummary(moved, buildContext(db));
-      }),
+      withDb(
+        (db) => {
+          const task = resolveTaskId(db, id);
+          const columnId = resolveColumnId(db, column);
+          const moved = moveTask(db, task.id, columnId);
+          if (!moved) throw new Error(`Task ${task.id} disappeared during move.`);
+          return presentSummary(moved, buildContext(db));
+        },
+        { notify: true },
+      ),
   );
 
   server.registerTool(
@@ -363,11 +385,14 @@ export function registerTools(server: McpServer): void {
       },
     },
     async ({ id }) =>
-      withDb((db) => {
-        const task = resolveTaskId(db, id);
-        deleteTask(db, task.id);
-        return { deleted: task.id, title: task.title };
-      }),
+      withDb(
+        (db) => {
+          const task = resolveTaskId(db, id);
+          deleteTask(db, task.id);
+          return { deleted: task.id, title: task.title };
+        },
+        { notify: true },
+      ),
   );
 
   server.registerTool(

@@ -1,10 +1,19 @@
 import { applyMigrations, openDatabase, type SqliteDb } from "../shared/db";
+import { pingDesktopApp } from "../shared/desktop-ping";
 import { findProjectRoot, getDbPath } from "../shared/domain/project";
 import { AmbiguousTaskError, TaskNotFoundError } from "../shared/domain/tasks";
 
 export interface ResolvedProject {
   db: SqliteDb;
   root: string;
+}
+
+export interface WithProjectDbOptions {
+  /** Fire a best-effort ping at the desktop app socket after `fn` returns
+   *  successfully. Mutating commands (`task add/move/edit/rm`, `project rename`)
+   *  set this so an open UI refreshes immediately. Read-only commands leave
+   *  it off — there's nothing to refresh. */
+  notify?: boolean;
 }
 
 export function resolveProjectDb(cwd: string = process.cwd()): ResolvedProject {
@@ -24,10 +33,21 @@ export function resolveProjectDb(cwd: string = process.cwd()): ResolvedProject {
  *  error is fed to `handleCliError` (which exits the process), so callers can
  *  write a single happy-path block instead of repeating the open/try/finally
  *  dance per command. */
-export function withProjectDb<T>(fn: (project: ResolvedProject) => T): T {
+export function withProjectDb<T>(
+  fn: (project: ResolvedProject) => T,
+  options: WithProjectDbOptions = {},
+): T {
   const project = resolveProjectDb();
   try {
-    return fn(project);
+    const result = fn(project);
+    if (options.notify) {
+      // Detached: don't block command exit on the socket round-trip. The
+      // event loop drains naturally; the ping has its own ~250ms timeout.
+      // Fire before db.close() — the write is already committed by then,
+      // but we want the ping to leave even if close() slows down.
+      void pingDesktopApp({ root: project.root });
+    }
+    return result;
   } catch (e) {
     handleCliError(e);
   } finally {

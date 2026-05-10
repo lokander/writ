@@ -1,10 +1,13 @@
 import { app, shell, BrowserWindow, ipcMain } from "electron";
+import * as fs from "node:fs";
+import * as net from "node:net";
 import { homedir } from "os";
-import { join } from "path";
+import { dirname, join } from "path";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import icon from "../../resources/icon.png?asset";
 
 import { applyMigrations, openDatabase, type SqliteDb } from "../shared/db";
+import { getDesktopSocketPath } from "../shared/desktop-ping";
 import { listColumns } from "../shared/domain/columns";
 import {
   findProjectRoot,
@@ -19,6 +22,17 @@ import type { NewTask, ProjectInfo, TaskUpdate } from "../shared/types";
 
 let currentDb: SqliteDb | null = null;
 let currentProject: ProjectInfo | null = null;
+let pingServer: net.Server | null = null;
+let dbWatcher: fs.FSWatcher | null = null;
+let watchDebounce: NodeJS.Timeout | null = null;
+// Bumped to "now + grace" each time the renderer's IPC handlers commit a
+// write, so the fs.watch event our own write trips doesn't re-broadcast and
+// cause the renderer to refetch on top of its own optimistic update. Pings
+// from CLI / MCP processes are unaffected — those come over the socket, not
+// the watcher.
+let suppressWatchUntil = 0;
+const SELF_WRITE_SUPPRESS_MS = 250;
+const WATCH_DEBOUNCE_MS = 150;
 
 // Schemes we're willing to hand off to the OS via shell.openExternal. http(s)
 // covers ordinary URLs; mailto for contact addresses pasted into descriptions.
@@ -66,12 +80,121 @@ function openCurrentProject(): void {
   currentDb = openDatabase(dbPath);
   applyMigrations(currentDb);
   currentProject = buildProjectInfo(root, dbPath, currentDb);
+  startDbWatch(root);
 }
 
 function closeCurrentProject(): void {
+  stopDbWatch();
   currentDb?.close();
   currentDb = null;
   currentProject = null;
+}
+
+function broadcastProjectChanged(): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.webContents.send("project:changed");
+  }
+}
+
+function noteSelfWrite(): void {
+  suppressWatchUntil = Date.now() + SELF_WRITE_SUPPRESS_MS;
+}
+
+function startPingServer(): void {
+  const sockPath = getDesktopSocketPath();
+  // Unix socket: ensure parent dir exists and remove any stale file from a
+  // previous crashed instance. Windows named pipes have neither concern.
+  if (process.platform !== "win32") {
+    try {
+      fs.mkdirSync(dirname(sockPath), { recursive: true });
+    } catch (err) {
+      console.error("[writ] failed to create socket dir", err);
+    }
+    try {
+      fs.unlinkSync(sockPath);
+    } catch {
+      // ENOENT is the happy path; anything else surfaces on listen() below.
+    }
+  }
+  pingServer = net.createServer((sock) => {
+    let buf = "";
+    sock.on("data", (chunk) => {
+      buf += chunk.toString("utf8");
+      const lines = buf.split("\n");
+      buf = lines.pop() ?? "";
+      for (const line of lines) handlePingLine(line);
+    });
+    sock.on("end", () => {
+      if (buf.trim().length > 0) handlePingLine(buf);
+    });
+    sock.on("error", () => sock.destroy());
+  });
+  pingServer.on("error", (err) => {
+    console.error("[writ] ping server error", err);
+  });
+  pingServer.listen(sockPath);
+}
+
+function handlePingLine(line: string): void {
+  const trimmed = line.trim();
+  if (trimmed.length === 0) return;
+  let msg: { root?: unknown };
+  try {
+    msg = JSON.parse(trimmed);
+  } catch {
+    return;
+  }
+  if (typeof msg.root !== "string") return;
+  // Filter by project root so a ping for project A doesn't refresh a window
+  // viewing project B. Once we support multiple open projects, this turns
+  // into a per-window match.
+  if (currentProject?.root !== msg.root) return;
+  broadcastProjectChanged();
+}
+
+function stopPingServer(): void {
+  pingServer?.close();
+  pingServer = null;
+  if (process.platform !== "win32") {
+    try {
+      fs.unlinkSync(getDesktopSocketPath());
+    } catch {
+      // socket may already be gone (clean shutdown closed it)
+    }
+  }
+}
+
+function startDbWatch(root: string): void {
+  const writDir = join(root, ".writ");
+  try {
+    dbWatcher = fs.watch(writDir, (_event, filename) => {
+      if (!filename) return;
+      // SQLite in WAL mode commits land in writ.db-wal; full checkpoints touch
+      // writ.db. writ.db-shm is shared-memory metadata that flutters with
+      // every transaction — ignore it to avoid spurious refreshes.
+      if (filename !== "writ.db" && filename !== "writ.db-wal") return;
+      if (Date.now() < suppressWatchUntil) return;
+      if (watchDebounce) clearTimeout(watchDebounce);
+      watchDebounce = setTimeout(() => {
+        watchDebounce = null;
+        broadcastProjectChanged();
+      }, WATCH_DEBOUNCE_MS);
+    });
+    dbWatcher.on("error", (err) => {
+      console.error("[writ] db watcher error", err);
+    });
+  } catch (err) {
+    console.error("[writ] failed to start db watcher", err);
+  }
+}
+
+function stopDbWatch(): void {
+  dbWatcher?.close();
+  dbWatcher = null;
+  if (watchDebounce) {
+    clearTimeout(watchDebounce);
+    watchDebounce = null;
+  }
 }
 
 function registerIpcHandlers(): void {
@@ -86,21 +209,28 @@ function registerIpcHandlers(): void {
     if (!currentDb || !currentProject) throw new Error("No project open");
     setDisplayName(currentDb, name);
     currentProject = buildProjectInfo(currentProject.root, currentProject.dbPath, currentDb);
+    noteSelfWrite();
     return currentProject;
   });
   ipcMain.handle("columns:list", () => (currentDb ? listColumns(currentDb) : []));
   ipcMain.handle("tasks:list", () => (currentDb ? listTasks(currentDb) : []));
   ipcMain.handle("tasks:create", (_event, input: NewTask) => {
     if (!currentDb) throw new Error("No project open");
-    return createTask(currentDb, input);
+    const task = createTask(currentDb, input);
+    noteSelfWrite();
+    return task;
   });
   ipcMain.handle("tasks:update", (_event, id: string, update: TaskUpdate) => {
     if (!currentDb) throw new Error("No project open");
-    return updateTask(currentDb, id, update);
+    const updated = updateTask(currentDb, id, update);
+    noteSelfWrite();
+    return updated;
   });
   ipcMain.handle("tasks:delete", (_event, id: string) => {
     if (!currentDb) throw new Error("No project open");
-    return deleteTask(currentDb, id);
+    const ok = deleteTask(currentDb, id);
+    noteSelfWrite();
+    return ok;
   });
   ipcMain.handle("tags:list", () => (currentDb ? listTags(currentDb) : []));
 }
@@ -169,6 +299,7 @@ app.whenReady().then(() => {
 
   openCurrentProject();
   registerIpcHandlers();
+  startPingServer();
   createWindow();
 
   app.on("activate", () => {
@@ -182,4 +313,7 @@ app.on("window-all-closed", () => {
   }
 });
 
-app.on("before-quit", closeCurrentProject);
+app.on("before-quit", () => {
+  stopPingServer();
+  closeCurrentProject();
+});

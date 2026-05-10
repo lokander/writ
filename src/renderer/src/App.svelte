@@ -182,15 +182,13 @@
       // ignore
     }
 
-    // Live-reload on window focus regain. Covers the common "tab to terminal,
-    // run a CLI / MCP command, tab back to the app" flow without making the
-    // user manually refresh. Real-time push (writ task 4G1C0D, Phase 7) is
-    // the long-term answer; this is the cheap interim.
-    const onFocus = (): void => {
+    // Live-reload on push: main broadcasts `project:changed` when the
+    // liveness socket receives a CLI / MCP ping, or fs.watch on `.writ/`
+    // sees the DB change. Covers the "tab to terminal, run writ task add,
+    // tab back" flow plus any third-party write that bypasses our tools.
+    return window.api.events.onProjectChanged(() => {
       writState.loadAll();
-    };
-    window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
+    });
   });
 
   function onTaskCreated(task: Task): void {

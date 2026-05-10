@@ -72,8 +72,8 @@ Rationale: the user's mental model is TODO.md-per-repo. Files travel with the co
 - Works without the desktop app running (CI, SSH, headless agents).
 - SQLite WAL handles concurrent writes from multiple sessions safely; "the shared instance" is the file, not a server.
 - Cwd is inherited from the spawning client, so project discovery is free.
-- **Planned:** after every write, the CLI/MCP will fire a best-effort notification at `~/.config/writ/app.sock` (Unix socket; named pipe on Windows). If the desktop app is listening, it refreshes immediately. If not, no-op.
-- **Planned:** the desktop app will also watch each registered DB with `fs.watch` as a fallback, so correctness never depends on the ping arriving. Today the renderer doesn't pick up external writes until it's reopened; an interim "live-reload on focus" tweak is in the backlog ahead of the full ping/watch story.
+- After every successful write, the CLI/MCP fires a best-effort notification at `~/.config/writ/app.sock` (Unix socket; named pipe on Windows at `\\.\pipe\writ-app`). If the desktop app is listening, it broadcasts a `project:changed` IPC event to its renderer windows and the open UI refreshes immediately. If not, no-op. The ping socket is `unref`d in the writer process so a pending connect never delays CLI exit.
+- The desktop app also watches each open DB's `.writ/` directory with `fs.watch` (filtered to `writ.db` / `writ.db-wal`, debounced ~150ms) so correctness never depends on the ping arriving — third-party writes and lost pings still surface in the UI. Renderer-initiated IPC writes set a ~250ms suppression window so the watcher event our own write trips doesn't trigger a redundant refetch on top of optimistic state.
 
 This is the only architectural choice that took real debate; see [Decision log](#decision-log).
 

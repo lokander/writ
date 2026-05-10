@@ -35,19 +35,25 @@ export function projectCommand(): Command {
         if (name !== undefined) {
           handleCliError(new Error("Pass either a name or --clear, not both."));
         }
-        withProjectDb(({ db }) => {
-          setDisplayName(db, null);
-          console.log("Display name cleared.");
-        });
+        withProjectDb(
+          ({ db }) => {
+            setDisplayName(db, null);
+            console.log("Display name cleared.");
+          },
+          { notify: true },
+        );
         return;
       }
       if (name === undefined) {
         handleCliError(new Error("Pass a name (or --clear to remove the current override)."));
       }
-      withProjectDb(({ db }) => {
-        setDisplayName(db, name);
-        console.log(`Display name set to '${getDisplayName(db)}'.`);
-      });
+      withProjectDb(
+        ({ db }) => {
+          setDisplayName(db, name);
+          console.log(`Display name set to '${getDisplayName(db)}'.`);
+        },
+        { notify: true },
+      );
     });
 
   return cmd;
