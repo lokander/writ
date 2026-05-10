@@ -1,11 +1,11 @@
 <script lang="ts">
   import { LockSimpleIcon } from "phosphor-svelte";
 
-  import type { Column, Task } from "../../../shared/types";
-  import { writState } from "./state.svelte";
-  import { PRIORITY_BORDER_CLASS } from "./priority-color";
-  import TagChip from "./TagChip.svelte";
-  import TaskIdChip from "./TaskIdChip.svelte";
+  import type { Column, Task } from "../../../../shared/types";
+  import { writState } from "../state.svelte";
+  import { PRIORITY_BORDER_CLASS } from "../priority-color";
+  import TagChip from "../chip/TagChip.svelte";
+  import TaskIdChip from "../chip/TaskIdChip.svelte";
 
   interface Props {
     columns: Column[];

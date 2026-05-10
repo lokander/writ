@@ -1,7 +1,7 @@
 <script lang="ts">
   import { XIcon } from "phosphor-svelte";
 
-  import { tagStyle } from "./tag-color";
+  import { tagStyle } from "../tag-color";
 
   interface Props {
     name: string;

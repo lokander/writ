@@ -1,10 +1,10 @@
 <script lang="ts">
   import { CheckIcon, XIcon } from "phosphor-svelte";
 
-  import type { Priority, Task } from "../../../shared/types";
-  import { PRIORITY_NAMES } from "../../../shared/types";
+  import type { Priority, Task } from "../../../../shared/types";
+  import { PRIORITY_NAMES } from "../../../../shared/types";
   import type { ConflictResolutions, EditedTaskFields, TaskDirtyFlags } from "./diff-task";
-  import { portal } from "./portal";
+  import { portal } from "../portal";
 
   interface Props {
     /** Snapshot at edit-start. The "Original" column. */

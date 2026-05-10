@@ -1,10 +1,10 @@
 <script lang="ts">
   import { XIcon } from "phosphor-svelte";
 
-  import type { Task } from "../../../shared/types";
-  import { writState } from "./state.svelte";
+  import type { Task } from "../../../../shared/types";
+  import { writState } from "../state.svelte";
   import Combobox from "./Combobox.svelte";
-  import TaskIdChip from "./TaskIdChip.svelte";
+  import TaskIdChip from "../chip/TaskIdChip.svelte";
 
   interface Props {
     /** Bindable id of the chosen parent, or null for "no parent". */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { Task } from "../../../shared/types";
+import type { Task } from "../../../../shared/types";
 
 import {
   buildResolvedUpdate,

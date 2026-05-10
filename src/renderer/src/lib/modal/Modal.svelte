@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import { portal } from "./portal";
+  import { portal } from "../portal";
 
   interface Props {
     /** Called when the user clicks the wrapper outside the modal content

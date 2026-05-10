@@ -1,13 +1,13 @@
 <script lang="ts">
   import { XIcon } from "phosphor-svelte";
 
-  import type { Priority, Task } from "../../../shared/types";
-  import { PRIORITY_NAMES } from "../../../shared/types";
-  import { writState } from "./state.svelte";
-  import DependsOnPicker from "./DependsOnPicker.svelte";
+  import type { Priority, Task } from "../../../../shared/types";
+  import { PRIORITY_NAMES } from "../../../../shared/types";
+  import { writState } from "../state.svelte";
+  import DependsOnPicker from "../picker/DependsOnPicker.svelte";
   import Modal from "./Modal.svelte";
-  import ParentPicker from "./ParentPicker.svelte";
-  import TagPicker from "./TagPicker.svelte";
+  import ParentPicker from "../picker/ParentPicker.svelte";
+  import TagPicker from "../picker/TagPicker.svelte";
 
   interface Props {
     onClose: () => void;

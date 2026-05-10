@@ -3,12 +3,12 @@
     parseTagSpec,
     validateTagName,
     TagValidationError,
-  } from "../../../shared/domain/tag-format";
-  import type { Tag } from "../../../shared/types";
-  import { writState } from "./state.svelte";
-  import { indexTags } from "./tag-color";
+  } from "../../../../shared/domain/tag-format";
+  import type { Tag } from "../../../../shared/types";
+  import { writState } from "../state.svelte";
+  import { indexTags } from "../tag-color";
   import Combobox from "./Combobox.svelte";
-  import TagChip from "./TagChip.svelte";
+  import TagChip from "../chip/TagChip.svelte";
 
   interface Props {
     /** Tag specs (`NAME` or `NAME=COLOR`). Bindable so callers can patch this

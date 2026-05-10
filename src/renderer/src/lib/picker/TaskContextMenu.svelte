@@ -2,11 +2,11 @@
   import { onMount, tick, untrack } from "svelte";
   import { CaretRightIcon } from "phosphor-svelte";
 
-  import type { Column, Priority, Task } from "../../../shared/types";
-  import { PRIORITY_NAMES } from "../../../shared/types";
+  import type { Column, Priority, Task } from "../../../../shared/types";
+  import { PRIORITY_NAMES } from "../../../../shared/types";
 
-  import { portal } from "./portal";
-  import { PRIORITY_DOT_CLASS } from "./priority-color";
+  import { portal } from "../portal";
+  import { PRIORITY_DOT_CLASS } from "../priority-color";
 
   interface Props {
     task: Task;

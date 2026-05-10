@@ -3,7 +3,7 @@
   import { CheckCircleIcon, InfoIcon, WarningIcon, WarningOctagonIcon } from "phosphor-svelte";
   import type { ToastVariant } from "./toast.svelte";
   import { toast } from "./toast.svelte";
-  import { portal } from "./portal";
+  import { portal } from "../portal";
 
   // Mapped explicitly so Tailwind's JIT scanner picks them up.
   const VARIANT_CLASS: Record<ToastVariant, string> = {

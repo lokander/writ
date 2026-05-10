@@ -12,18 +12,18 @@
     XIcon,
   } from "phosphor-svelte";
 
-  import AddTaskModal from "./lib/AddTaskModal.svelte";
-  import ConfirmDialog from "./lib/ConfirmDialog.svelte";
-  import KanbanView from "./lib/KanbanView.svelte";
-  import ListView from "./lib/ListView.svelte";
-  import TagChip from "./lib/TagChip.svelte";
-  import TaskContextMenu from "./lib/TaskContextMenu.svelte";
-  import TaskEditModal from "./lib/TaskEditModal.svelte";
-  import ToastStack from "./lib/ToastStack.svelte";
+  import AddTaskModal from "./lib/modal/AddTaskModal.svelte";
+  import ConfirmDialog from "./lib/modal/ConfirmDialog.svelte";
+  import KanbanView from "./lib/view/KanbanView.svelte";
+  import ListView from "./lib/view/ListView.svelte";
+  import TagChip from "./lib/chip/TagChip.svelte";
+  import TaskContextMenu from "./lib/picker/TaskContextMenu.svelte";
+  import TaskEditModal from "./lib/modal/TaskEditModal.svelte";
+  import ToastStack from "./lib/toast/ToastStack.svelte";
   import { PRIORITY_DOT_CLASS } from "./lib/priority-color";
   import { writState } from "./lib/state.svelte";
   import { indexTags } from "./lib/tag-color";
-  import { toast } from "./lib/toast.svelte";
+  import { toast } from "./lib/toast/toast.svelte";
   import { PRIORITY_NAMES, type Priority, type Task } from "../../shared/types";
 
   type StateFilter = "any" | "ready" | "blocked";

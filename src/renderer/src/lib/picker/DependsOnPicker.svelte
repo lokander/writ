@@ -1,9 +1,9 @@
 <script lang="ts">
-  import type { Task } from "../../../shared/types";
-  import { writState } from "./state.svelte";
+  import type { Task } from "../../../../shared/types";
+  import { writState } from "../state.svelte";
   import Combobox from "./Combobox.svelte";
-  import TaskIdChip from "./TaskIdChip.svelte";
-  import TaskRefRow from "./TaskRefRow.svelte";
+  import TaskIdChip from "../chip/TaskIdChip.svelte";
+  import TaskRefRow from "../chip/TaskRefRow.svelte";
 
   interface Props {
     /** Bindable list of blocker task ids. */

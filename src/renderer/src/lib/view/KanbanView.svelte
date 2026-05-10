@@ -2,13 +2,13 @@
   import { onMount } from "svelte";
   import { LockSimpleIcon } from "phosphor-svelte";
 
-  import type { Column, Task } from "../../../shared/types";
-  import { writState } from "./state.svelte";
-  import { draggable, dropTarget, monitorForElements } from "./dnd";
-  import HiddenDropZone from "./HiddenDropZone.svelte";
-  import { PRIORITY_BORDER_CLASS } from "./priority-color";
-  import TagChip from "./TagChip.svelte";
-  import TaskIdChip from "./TaskIdChip.svelte";
+  import type { Column, Task } from "../../../../shared/types";
+  import { writState } from "../state.svelte";
+  import { draggable, dropTarget, monitorForElements } from "../dnd/dnd";
+  import HiddenDropZone from "../dnd/HiddenDropZone.svelte";
+  import { PRIORITY_BORDER_CLASS } from "../priority-color";
+  import TagChip from "../chip/TagChip.svelte";
+  import TaskIdChip from "../chip/TaskIdChip.svelte";
 
   interface Props {
     columns: Column[];

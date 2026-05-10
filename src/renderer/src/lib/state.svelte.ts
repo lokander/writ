@@ -1,5 +1,5 @@
 import type { Column, NewTask, ProjectInfo, Tag, Task, TaskUpdate } from "../../../shared/types";
-import { toast } from "./toast.svelte";
+import { toast } from "./toast/toast.svelte";
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);

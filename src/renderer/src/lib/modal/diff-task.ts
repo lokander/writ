@@ -1,4 +1,4 @@
-import type { Priority, Task, TaskUpdate } from "../../../shared/types";
+import type { Priority, Task, TaskUpdate } from "../../../../shared/types";
 
 /** The user-editable fields the modal binds to. Plain values, not $state
  *  proxies — callers pass `$state.snapshot(...)` at the boundary. */

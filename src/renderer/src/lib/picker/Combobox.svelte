@@ -1,7 +1,7 @@
 <script lang="ts" generics="T">
   import type { Snippet } from "svelte";
 
-  import { portal } from "./portal";
+  import { portal } from "../portal";
 
   interface Props {
     items: T[];

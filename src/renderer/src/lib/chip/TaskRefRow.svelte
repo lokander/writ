@@ -1,7 +1,7 @@
 <script lang="ts">
   import { XIcon } from "phosphor-svelte";
 
-  import type { Task } from "../../../shared/types";
+  import type { Task } from "../../../../shared/types";
   import TaskIdChip from "./TaskIdChip.svelte";
 
   interface Props {

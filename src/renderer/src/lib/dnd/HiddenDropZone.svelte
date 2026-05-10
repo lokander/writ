@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { Column } from "../../../shared/types";
-  import { writState } from "./state.svelte";
+  import type { Column } from "../../../../shared/types";
+  import { writState } from "../state.svelte";
   import { dropTarget } from "./dnd";
 
   interface Props {

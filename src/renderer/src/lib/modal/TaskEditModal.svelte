@@ -9,9 +9,9 @@
     WarningIcon,
   } from "phosphor-svelte";
 
-  import type { Priority, Task, TaskUpdate } from "../../../shared/types";
-  import { PRIORITY_NAMES } from "../../../shared/types";
-  import { writState } from "./state.svelte";
+  import type { Priority, Task, TaskUpdate } from "../../../../shared/types";
+  import { PRIORITY_NAMES } from "../../../../shared/types";
+  import { writState } from "../state.svelte";
   import {
     buildResolvedUpdate,
     buildTaskUpdate,
@@ -20,18 +20,18 @@
     intersectFlags,
     taskToFields,
   } from "./diff-task";
-  import { indexTags } from "./tag-color";
-  import { renderMarkdown } from "./markdown";
-  import { toast } from "./toast.svelte";
+  import { indexTags } from "../tag-color";
+  import { renderMarkdown } from "../markdown/markdown";
+  import { toast } from "../toast/toast.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import ConflictDialog from "./ConflictDialog.svelte";
-  import DependsOnPicker from "./DependsOnPicker.svelte";
+  import DependsOnPicker from "../picker/DependsOnPicker.svelte";
   import Modal from "./Modal.svelte";
-  import ParentPicker from "./ParentPicker.svelte";
-  import TagChip from "./TagChip.svelte";
-  import TagPicker from "./TagPicker.svelte";
-  import TaskIdChip from "./TaskIdChip.svelte";
-  import TaskRefRow from "./TaskRefRow.svelte";
+  import ParentPicker from "../picker/ParentPicker.svelte";
+  import TagChip from "../chip/TagChip.svelte";
+  import TagPicker from "../picker/TagPicker.svelte";
+  import TaskIdChip from "../chip/TaskIdChip.svelte";
+  import TaskRefRow from "../chip/TaskRefRow.svelte";
 
   interface Props {
     /** The task this modal is editing. Looked up live from `writState.tasks`
