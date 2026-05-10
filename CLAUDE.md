@@ -93,6 +93,8 @@ The CLI and MCP server are Node entry points; do not import Electron APIs from t
 
 - **Confirmation prompts go through `<ConfirmDialog>`.** `lib/ConfirmDialog.svelte` is portaled (via `lib/portal.ts`) above the modal layer (`z-[1100]`), supports a `danger` variant, handles Esc/Enter shortcuts, and stops keydown propagation so the underlying modal's handler doesn't double-fire. Any new "are you sure?" flow — delete, discard, irreversible action — reuses this rather than rolling inline UI or calling `window.confirm`.
 
+- **Mutating CLI / MCP entry points must opt into the desktop liveness ping.** `withProjectDb` (CLI, `src/cli/context.ts`) and `withDb` (MCP, `src/mcp/tools.ts`) accept `{ notify?: boolean }`; passing `notify: true` fires `pingDesktopApp({ root })` from `src/shared/desktop-ping.ts` after `fn` returns successfully, so an open desktop app refreshes immediately. Mutating call sites (`task add/move/edit/rm`, `project rename`, `create_task`/`update_task`/`move_task`/`delete_task`) MUST pass it; read-only paths leave it off. The Electron main process has the matching `fs.watch` fallback so missed pings still surface, but skipping `notify` on a mutation regresses the live-update UX without any test catching it. Renderer-side: subscribe via `window.api.events.onProjectChanged` and call `writState.loadAll({ silent: true })` to avoid the loading-screen flicker.
+
 ## Domain conventions
 
 - **Tag specs** are `NAME` or `NAME=COLOR`. Names match `^[a-zA-Z0-9][a-zA-Z0-9_-]*$`. Colors accept `#rgb`/`#rrggbb` hex or one of the 147 CSS named colors; both are normalized lowercase. NULL color means "let the renderer hash the name to a DaisyUI palette slot." Color is a tag-level property — once set, it applies wherever the tag appears.
