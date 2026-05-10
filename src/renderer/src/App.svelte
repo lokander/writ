@@ -1,6 +1,15 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { NotepadIcon, PlusIcon, XIcon } from "phosphor-svelte";
+  import {
+    FlagIcon,
+    FunnelIcon,
+    KanbanIcon,
+    ListIcon,
+    NotepadIcon,
+    PlusIcon,
+    TagIcon,
+    XIcon,
+  } from "phosphor-svelte";
 
   import AddTaskModal from "./lib/AddTaskModal.svelte";
   import ConfirmDialog from "./lib/ConfirmDialog.svelte";
@@ -68,6 +77,9 @@
   // tag names rarely collide cross-project.
   let filterTags = $state<string[]>([]);
   let filterPriorities = $state<Priority[]>([]);
+  // How selected tag chips combine: "all" requires every selected tag on the
+  // task (AND); "any" requires at least one (OR — parity with `--any-tag`).
+  let tagMode = $state<"all" | "any">("all");
   let stateFilter = $state<StateFilter>("any");
 
   const filtersActive = $derived(
@@ -96,6 +108,7 @@
         FILTER_STORAGE_KEY,
         JSON.stringify({
           tags: filterTags,
+          tagMode,
           priorities: filterPriorities,
           state: stateFilter,
         }),
@@ -115,9 +128,16 @@
   });
 
   function matchesFilters(task: Task): boolean {
-    // AND across selected tag chips: every selected tag must be on the task.
-    for (const want of filterTags) {
-      if (!task.tags.includes(want)) return false;
+    if (filterTags.length > 0) {
+      // tagMode picks the combinator: "all" → every selected tag on the task
+      // (AND), "any" → at least one (OR, parity with CLI's --any-tag).
+      if (tagMode === "any") {
+        if (!filterTags.some((want) => task.tags.includes(want))) return false;
+      } else {
+        for (const want of filterTags) {
+          if (!task.tags.includes(want)) return false;
+        }
+      }
     }
     // OR across selected priority chips: any match passes. Empty = no narrowing.
     if (filterPriorities.length > 0 && !filterPriorities.includes(task.priority)) {
@@ -207,6 +227,7 @@
   function clearFilters(): void {
     filterTags = [];
     filterPriorities = [];
+    tagMode = "all";
     stateFilter = "any";
   }
 
@@ -217,11 +238,15 @@
       if (raw) {
         const parsed = JSON.parse(raw) as {
           tags?: unknown;
+          tagMode?: unknown;
           priorities?: unknown;
           state?: unknown;
         };
         if (Array.isArray(parsed.tags) && parsed.tags.every((v) => typeof v === "string")) {
           filterTags = parsed.tags;
+        }
+        if (parsed.tagMode === "all" || parsed.tagMode === "any") {
+          tagMode = parsed.tagMode;
         }
         if (
           Array.isArray(parsed.priorities) &&
@@ -335,7 +360,7 @@
 
 <main class="flex h-full flex-col bg-base-100 text-base-content">
   <header
-    class="grid min-h-16 grid-cols-3 items-center gap-3 border-b border-base-300 bg-base-200 px-4"
+    class="grid grid-cols-3 items-center gap-3 border-b border-base-300 bg-base-200 px-4 py-2"
   >
     <div class="flex min-w-0 items-center gap-3">
       <span class="flex shrink-0 items-center">
@@ -391,10 +416,15 @@
           {#each VIEWS as v (v)}
             <button
               type="button"
-              class="btn btn-primary btn-xs join-item w-16"
+              class="btn btn-primary btn-xs join-item w-24"
               class:btn-soft={view !== v}
               onclick={() => (view = v)}
             >
+              {#if v === "list"}
+                <ListIcon size={14} weight="bold" />
+              {:else}
+                <KanbanIcon size={14} weight="bold" />
+              {/if}
               {v[0].toUpperCase() + v.slice(1)}
             </button>
           {/each}
@@ -403,8 +433,8 @@
     </div>
     <div class="flex justify-end">
       {#if writState.project && !writState.loading && !writState.error}
-        <button type="button" class="btn btn-primary btn-sm" onclick={() => (showAddModal = true)}>
-          <PlusIcon size={14} weight="bold" />
+        <button type="button" class="btn btn-primary btn-xs" onclick={() => (showAddModal = true)}>
+          <PlusIcon size={12} weight="bold" />
           New task
         </button>
       {/if}
@@ -434,20 +464,24 @@
         ? 'border-primary/40 bg-primary/5'
         : 'border-base-300 bg-base-200'}"
     >
-      <div class="join">
-        {#each STATE_FILTERS as opt (opt)}
-          <button
-            type="button"
-            class="btn btn-primary btn-xs join-item"
-            class:btn-soft={stateFilter !== opt}
-            onclick={() => (stateFilter = opt)}
-          >
-            {opt === "any" ? "All" : opt[0].toUpperCase() + opt.slice(1)}
-          </button>
-        {/each}
+      <div class="flex items-center gap-2">
+        <FunnelIcon size={20} class="ml-0.5 opacity-60" aria-label="Filter" />
+        <div class="join">
+          {#each STATE_FILTERS as opt (opt)}
+            <button
+              type="button"
+              class="btn btn-primary btn-xs join-item"
+              class:btn-soft={stateFilter !== opt}
+              onclick={() => (stateFilter = opt)}
+            >
+              {opt === "any" ? "All" : opt[0].toUpperCase() + opt.slice(1)}
+            </button>
+          {/each}
+        </div>
       </div>
 
-      <div class="flex flex-wrap items-center gap-1">
+      <div class="flex flex-wrap items-center gap-1.5">
+        <FlagIcon size={14} class="opacity-50" aria-label="Priority" />
         {#each PRIORITY_CHIPS as chip (chip.value)}
           {@const active = filterPriorities.includes(chip.value)}
           <button
@@ -464,19 +498,37 @@
       </div>
 
       {#if visibleTagChips.length > 0}
-        <div class="flex flex-wrap items-center gap-1">
-          {#each visibleTagChips as tag (tag.name)}
-            {@const active = filterTags.includes(tag.name)}
-            <button
-              type="button"
-              class="cursor-pointer transition-opacity"
-              class:opacity-40={!active}
-              aria-pressed={active}
-              onclick={() => toggleTagFilter(tag.name)}
-            >
-              <TagChip name={tag.name} color={tag.color} />
-            </button>
-          {/each}
+        <div class="flex flex-wrap items-center gap-2">
+          <TagIcon size={14} class="opacity-50" aria-label="Tags" />
+          <div class="join">
+            {#each ["all", "any"] as const as mode (mode)}
+              <button
+                type="button"
+                class="btn btn-primary btn-xs join-item"
+                class:btn-soft={tagMode !== mode}
+                title={mode === "all"
+                  ? "Match tasks tagged with every selected tag"
+                  : "Match tasks tagged with any of the selected tags"}
+                onclick={() => (tagMode = mode)}
+              >
+                {mode[0].toUpperCase() + mode.slice(1)}
+              </button>
+            {/each}
+          </div>
+          <div class="flex flex-wrap items-center gap-1">
+            {#each visibleTagChips as tag (tag.name)}
+              {@const active = filterTags.includes(tag.name)}
+              <button
+                type="button"
+                class="cursor-pointer transition-opacity"
+                class:opacity-40={!active}
+                aria-pressed={active}
+                onclick={() => toggleTagFilter(tag.name)}
+              >
+                <TagChip name={tag.name} color={tag.color} />
+              </button>
+            {/each}
+          </div>
         </div>
       {/if}
 
