@@ -110,7 +110,7 @@ writ task add <title>           Add a task
   --tag <spec>                  Add a tag. Spec: NAME or NAME=COLOR. Repeatable.
   --depends-on <id>             Block on another task. Repeatable.
 
-writ task list                  List tasks; default hides Done / Archived
+writ task list                  List tasks; default hides Done / Archived  (alias: ls)
   -c, --col <name>              Only this column
   --tag <name>                  Tasks tagged with this name. Repeatable; ANDs.
   --any-tag <name>              Tasks tagged with any of these. Repeatable; ORs.
@@ -123,11 +123,11 @@ writ task list                  List tasks; default hides Done / Archived
 
 writ task view <id>             Full details (header + description + subtasks)
 writ task <id>                  Shortcut for view
-writ task move <id> <col>       Move to a different column
+writ task move <id> <col>       Move to a different column   (alias: mv)
 writ task edit <id>             Open in $EDITOR (frontmatter + markdown body)
   --tag <spec>                  Replace the tag set without opening the editor
   --depends-on <id>             Replace the dependency set without opening the editor
-writ task rm <id>               Delete; subtasks cascade
+writ task remove <id>           Delete; subtasks cascade     (alias: rm)
 
 writ project show               Project id, name, paths
 writ project rename <name>      Set the display name (or --clear to revert)

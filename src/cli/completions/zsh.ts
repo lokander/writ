@@ -18,8 +18,11 @@ _writ() {
     task_subs=(
         'add:Add a new task'
         'list:List tasks grouped by column'
+        'ls:Alias for list'
         'move:Move a task to a different column'
-        'rm:Delete a task and its subtasks'
+        'mv:Alias for move'
+        'remove:Delete a task and its subtasks'
+        'rm:Alias for remove'
         'view:Show a task'
         'edit:Open a task in $EDITOR'
     )
@@ -49,7 +52,7 @@ _writ() {
                         sub) _describe -t task_subs 'task subcommand' task_subs ;;
                         sub_args)
                             case $line[1] in
-                                list)
+                                list|ls)
                                     _arguments \\
                                         '--col[Filter by column]:column:' \\
                                         '*--tag[Filter by tag (AND)]:tag:' \\

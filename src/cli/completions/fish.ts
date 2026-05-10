@@ -48,25 +48,32 @@ complete -c writ -n __writ_no_subcommand -a project    -d "Inspect or configure 
 complete -c writ -n __writ_no_subcommand -a mcp        -d "Run the MCP server or install it"
 complete -c writ -n __writ_no_subcommand -a completion -d "Print a shell completion script"
 
-# task subcommands
-set -l task_subs add list move rm view edit
-complete -c writ -n "__writ_using task; and not __fish_seen_subcommand_from $task_subs" -a add  -d "Add a new task"
-complete -c writ -n "__writ_using task; and not __fish_seen_subcommand_from $task_subs" -a list -d "List tasks grouped by column"
-complete -c writ -n "__writ_using task; and not __fish_seen_subcommand_from $task_subs" -a move -d "Move a task to a different column"
-complete -c writ -n "__writ_using task; and not __fish_seen_subcommand_from $task_subs" -a rm   -d "Delete a task and its subtasks"
-complete -c writ -n "__writ_using task; and not __fish_seen_subcommand_from $task_subs" -a view -d "Show a task"
-complete -c writ -n "__writ_using task; and not __fish_seen_subcommand_from $task_subs" -a edit -d "Open a task in \\$EDITOR"
+# task subcommands. Aliases listed alongside canonicals so users discover
+# either form via tab-completion. The __writ_using_nested matchers below
+# accept both alias and canonical so flag completion fires either way.
+set -l task_subs add list ls move mv remove rm view edit
+complete -c writ -n "__writ_using task; and not __fish_seen_subcommand_from $task_subs" -a add    -d "Add a new task"
+complete -c writ -n "__writ_using task; and not __fish_seen_subcommand_from $task_subs" -a list   -d "List tasks grouped by column"
+complete -c writ -n "__writ_using task; and not __fish_seen_subcommand_from $task_subs" -a ls     -d "Alias for list"
+complete -c writ -n "__writ_using task; and not __fish_seen_subcommand_from $task_subs" -a move   -d "Move a task to a different column"
+complete -c writ -n "__writ_using task; and not __fish_seen_subcommand_from $task_subs" -a mv     -d "Alias for move"
+complete -c writ -n "__writ_using task; and not __fish_seen_subcommand_from $task_subs" -a remove -d "Delete a task and its subtasks"
+complete -c writ -n "__writ_using task; and not __fish_seen_subcommand_from $task_subs" -a rm     -d "Alias for remove"
+complete -c writ -n "__writ_using task; and not __fish_seen_subcommand_from $task_subs" -a view   -d "Show a task"
+complete -c writ -n "__writ_using task; and not __fish_seen_subcommand_from $task_subs" -a edit   -d "Open a task in \\$EDITOR"
 
-# task list flags
-complete -c writ -n "__writ_using_nested task list" -l col           -d "Filter by column" -r
-complete -c writ -n "__writ_using_nested task list" -l tag           -d "Filter by tag (AND)" -r
-complete -c writ -n "__writ_using_nested task list" -l any-tag       -d "Filter by tag (OR)" -r
-complete -c writ -n "__writ_using_nested task list" -l priority      -d "Filter by priority" -r -a "urgent high normal low u h n l 0 1 2 3"
-complete -c writ -n "__writ_using_nested task list" -l grep          -d "Filter by title substring" -r
-complete -c writ -n "__writ_using_nested task list" -l show-done     -d "Include the Done column"
-complete -c writ -n "__writ_using_nested task list" -l show-archived -d "Include the Archived column"
-complete -c writ -n "__writ_using_nested task list" -l ready         -d "Only tasks with all blockers resolved"
-complete -c writ -n "__writ_using_nested task list" -l blocked       -d "Only tasks with open blockers"
+# task list / ls flags
+for sub in list ls
+    complete -c writ -n "__writ_using_nested task $sub" -l col           -d "Filter by column" -r
+    complete -c writ -n "__writ_using_nested task $sub" -l tag           -d "Filter by tag (AND)" -r
+    complete -c writ -n "__writ_using_nested task $sub" -l any-tag       -d "Filter by tag (OR)" -r
+    complete -c writ -n "__writ_using_nested task $sub" -l priority      -d "Filter by priority" -r -a "urgent high normal low u h n l 0 1 2 3"
+    complete -c writ -n "__writ_using_nested task $sub" -l grep          -d "Filter by title substring" -r
+    complete -c writ -n "__writ_using_nested task $sub" -l show-done     -d "Include the Done column"
+    complete -c writ -n "__writ_using_nested task $sub" -l show-archived -d "Include the Archived column"
+    complete -c writ -n "__writ_using_nested task $sub" -l ready         -d "Only tasks with all blockers resolved"
+    complete -c writ -n "__writ_using_nested task $sub" -l blocked       -d "Only tasks with open blockers"
+end
 
 # task add flags
 complete -c writ -n "__writ_using_nested task add" -s p -l priority    -d "Priority level" -r -a "urgent high normal low u h n l 0 1 2 3"

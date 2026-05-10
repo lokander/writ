@@ -120,9 +120,19 @@ describe.concurrent("writ task move", () => {
       expect(r.exitCode).toBe(1);
       expect(r.stderr).toMatch(/Column 'Bogus' not found/);
     }));
+
+  it("`mv` is an alias for `move`", () =>
+    withProject(async (dir) => {
+      await init(dir);
+      const id = suffixFromCreated((await runWrit(dir, ["task", "add", "via-mv"])).stdout);
+      const r = await runWrit(dir, ["task", "mv", id, "Doing"]);
+      expect(r.exitCode).toBe(0);
+      const view = await runWrit(dir, ["task", "view", id]);
+      expect(view.stdout).toMatch(/Column\s+Doing/);
+    }));
 });
 
-describe.concurrent("writ task rm", () => {
+describe.concurrent("writ task remove", () => {
   it("deletes a task and cascades to its subtasks", () =>
     withProject(async (dir) => {
       await init(dir);
@@ -131,7 +141,7 @@ describe.concurrent("writ task rm", () => {
         (await runWrit(dir, ["task", "add", "child-task", "--parent", parent])).stdout,
       );
 
-      const r = await runWrit(dir, ["task", "rm", parent]);
+      const r = await runWrit(dir, ["task", "remove", parent]);
       expect(r.exitCode).toBe(0);
 
       const view = await runWrit(dir, ["task", "view", parent]);
@@ -141,5 +151,15 @@ describe.concurrent("writ task rm", () => {
       const childView = await runWrit(dir, ["task", "view", child]);
       expect(childView.exitCode).toBe(1);
       expect(childView.stderr).toMatch(/No task matches/);
+    }));
+
+  it("`rm` is an alias for `remove`", () =>
+    withProject(async (dir) => {
+      await init(dir);
+      const id = suffixFromCreated((await runWrit(dir, ["task", "add", "via-rm"])).stdout);
+      const r = await runWrit(dir, ["task", "rm", id]);
+      expect(r.exitCode).toBe(0);
+      const view = await runWrit(dir, ["task", "view", id]);
+      expect(view.exitCode).toBe(1);
     }));
 });

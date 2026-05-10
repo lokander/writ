@@ -130,4 +130,13 @@ describe.concurrent("writ task list", () => {
       expect(childLine).toBeGreaterThan(parentLine);
       expect(lines[childLine]).toMatch(/^\s{2,}/);
     }));
+
+  it("`ls` is an alias for `list`", () =>
+    withProject(async (dir) => {
+      await init(dir);
+      await runWrit(dir, ["task", "add", "alias-test"]);
+      const r = await runWrit(dir, ["task", "ls"]);
+      expect(r.exitCode).toBe(0);
+      expect(r.stdout).toContain("alias-test");
+    }));
 });

@@ -161,6 +161,7 @@ export function taskCommand(): Command {
 
   cmd
     .command("list")
+    .alias("ls")
     .description("List tasks grouped by column")
     .option("-c, --col <name>", "Only show tasks in the named column")
     .option(
@@ -278,6 +279,7 @@ export function taskCommand(): Command {
 
   cmd
     .command("move <id> <column>")
+    .alias("mv")
     .description("Move a task to a different column (case-insensitive)")
     .action((idInput: string, columnName: string) => {
       withProjectDb(
@@ -295,7 +297,8 @@ export function taskCommand(): Command {
     });
 
   cmd
-    .command("rm <id>")
+    .command("remove <id>")
+    .alias("rm")
     .description("Delete a task and its subtasks")
     .action((idInput: string) => {
       withProjectDb(

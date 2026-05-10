@@ -18,8 +18,16 @@ _writ_completions() {
                 ((i++))
                 if [[ $i -lt $cword ]]; then
                     case "\${COMP_WORDS[i]}" in
-                        add|list|move|rm|view|edit|show|rename|install|uninstall)
-                            nested="\${COMP_WORDS[i]}"
+                        add|list|ls|move|mv|remove|rm|view|edit|show|rename|install|uninstall)
+                            # Normalize aliases to their canonical name so the
+                            # per-nested flag completion below has a single
+                            # case to match.
+                            case "\${COMP_WORDS[i]}" in
+                                ls) nested="list" ;;
+                                mv) nested="move" ;;
+                                rm) nested="remove" ;;
+                                *)  nested="\${COMP_WORDS[i]}" ;;
+                            esac
                             ;;
                     esac
                 fi
@@ -37,7 +45,7 @@ _writ_completions() {
     case "$subcommand" in
         task)
             if [[ -z "$nested" ]]; then
-                COMPREPLY=( $(compgen -W "add list move rm view edit" -- "$cur") )
+                COMPREPLY=( $(compgen -W "add list ls move mv remove rm view edit" -- "$cur") )
                 return
             fi
             case "$nested" in
