@@ -9,8 +9,8 @@ import {
   createTask,
   deleteTask,
   listTasks,
-  moveTask,
   resolveTaskId,
+  StaleReadError,
   updateTask,
   type ListFilter,
 } from "../shared/domain/tasks";
@@ -156,6 +156,43 @@ function resolveColumnId(db: SqliteDb, name: string): string {
   return col.id;
 }
 
+/** Drives the OCC dance for the mutating MCP tools.
+ *
+ *  When the agent passes `expected_version`, we pin the same value on the
+ *  domain call. A stale read becomes a tool error so the agent can re-fetch
+ *  with `get_task` and reissue (or escalate to the user). When the agent
+ *  did NOT pin, we still pin internally — to whatever version we just read
+ *  for `task` — and retry once on stale read with the refreshed version.
+ *  Internal pinning is what lets us *see* the staleness in the unpinned
+ *  case at all; without it the write would silently overwrite. */
+export function runMcpUpdate(
+  db: SqliteDb,
+  taskId: string,
+  initialVersion: number,
+  update: Parameters<typeof updateTask>[2],
+  callerPinned: number | undefined,
+): Task {
+  const firstPin = callerPinned ?? initialVersion;
+  try {
+    const out = updateTask(db, taskId, { ...update, expectedVersion: firstPin });
+    if (!out) throw new Error(`Task ${taskId} disappeared during update.`);
+    return out;
+  } catch (e) {
+    if (!(e instanceof StaleReadError)) throw e;
+    if (callerPinned !== undefined) {
+      // Caller pinned, so they wanted to bail rather than auto-merge.
+      throw new Error(
+        `Stale read: task ${e.currentTask.id} is now at version ${e.currentTask.version} ` +
+          `(you pinned ${callerPinned}). Refetch with get_task and reissue if you want to overwrite.`,
+      );
+    }
+    // Unpinned: re-pin to the fresh version and retry once.
+    const out = updateTask(db, taskId, { ...update, expectedVersion: e.currentTask.version });
+    if (!out) throw new Error(`Task ${taskId} disappeared during update.`);
+    return out;
+  }
+}
+
 export function registerTools(server: McpServer): void {
   server.registerTool(
     "list_tasks",
@@ -295,7 +332,7 @@ export function registerTools(server: McpServer): void {
     {
       title: "Update task",
       description:
-        "Update one or more fields on a task. Omit a field to leave it unchanged. Returns the updated task.",
+        "Update one or more fields on a task. Omit a field to leave it unchanged. Returns the updated task.\n\nOCC: pass `expected_version` (read from `get_task` / `list_tasks`) to refuse the write if a concurrent edit landed first — the conflict surfaces as a tool error so you can re-read and decide. Omit `expected_version` for last-writer-wins; the server still pins internally and retries once on a detected race so transient concurrent writes don't silently drop your edit.",
       inputSchema: {
         id: z.string().describe("Full ulid or any unique suffix."),
         title: z.string().min(1).optional(),
@@ -319,9 +356,27 @@ export function registerTools(server: McpServer): void {
           .describe(
             "Replace the task's dependency set (full ulids or unique suffixes). Pass `[]` to clear all dependencies. Omit to leave them unchanged. Cycles are rejected.",
           ),
+        expected_version: z
+          .number()
+          .int()
+          .nonnegative()
+          .optional()
+          .describe(
+            "Optimistic-concurrency pin. When set, the write is refused with a tool error if the task's stored version no longer matches — refetch via `get_task` and reissue with the new version (or new field values) if you still want the edit. When omitted, the server falls back to last-writer-wins after one internal retry on a detected race.",
+          ),
       },
     },
-    async ({ id, title, description, column, priority, parent_id, tags, depends_on }) =>
+    async ({
+      id,
+      title,
+      description,
+      column,
+      priority,
+      parent_id,
+      tags,
+      depends_on,
+      expected_version,
+    }) =>
       withDb(
         (db) => {
           const task = resolveTaskId(db, id);
@@ -343,8 +398,7 @@ export function registerTools(server: McpServer): void {
           if (depends_on !== undefined) {
             update.dependsOn = depends_on.map((ref) => resolveTaskId(db, ref).id);
           }
-          const updated = updateTask(db, task.id, update);
-          if (!updated) throw new Error(`Task ${task.id} disappeared during update.`);
+          const updated = runMcpUpdate(db, task.id, task.version, update, expected_version);
           return presentFull(updated, buildContext(db));
         },
         { notify: true },
@@ -356,19 +410,39 @@ export function registerTools(server: McpServer): void {
     {
       title: "Move task",
       description:
-        "Move a task to a different column. Equivalent to update_task with only the column field, but more discoverable.",
+        "Move a task to a different column. Equivalent to update_task with only the column field, but more discoverable.\n\nOCC: pass `expected_version` to refuse the move if a concurrent edit landed first — the conflict surfaces as a tool error so you can decide whether to override. Omit it for last-writer-wins (with one internal retry on a detected race).",
       inputSchema: {
         id: z.string().describe("Full ulid or any unique suffix."),
         column: z.string().describe("Target column name (case-insensitive)."),
+        expected_version: z
+          .number()
+          .int()
+          .nonnegative()
+          .optional()
+          .describe(
+            "Optimistic-concurrency pin (see update_task). When omitted, the server retries once on a detected race.",
+          ),
       },
     },
-    async ({ id, column }) =>
+    async ({ id, column, expected_version }) =>
       withDb(
         (db) => {
           const task = resolveTaskId(db, id);
           const columnId = resolveColumnId(db, column);
-          const moved = moveTask(db, task.id, columnId);
-          if (!moved) throw new Error(`Task ${task.id} disappeared during move.`);
+          // Match the moveTask domain helper: append at the bottom of the
+          // target column. We inline here so we can route the write through
+          // runMcpUpdate (and its retry-once / OCC handling) instead of
+          // calling moveTask directly.
+          const max = db
+            .prepare(`SELECT COALESCE(MAX(position), 0) AS m FROM tasks WHERE column_id = ?`)
+            .get(columnId) as { m: number };
+          const moved = runMcpUpdate(
+            db,
+            task.id,
+            task.version,
+            { columnId, position: max.m + 1000 },
+            expected_version,
+          );
           return presentSummary(moved, buildContext(db));
         },
         { notify: true },

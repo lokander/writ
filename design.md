@@ -180,6 +180,16 @@ Chromium boots in 1–2s; unacceptable per `writ task add`. The CLI must be a fa
 
 Simplest model. Recursive queries are well-supported in SQLite. Recursion is bounded to the list view's hierarchical render and the detail view's subtree; the kanban view renders flat per column, with a parent-title breadcrumb on subtasks for context.
 
+### Optimistic concurrency via per-task `version`
+
+Three writers (CLI, MCP, desktop) share a single SQLite. To keep "user opened a modal three minutes ago" from silently overwriting an MCP edit that landed two seconds ago, every successful `updateTask` bumps `tasks.version`. Callers may pin `expectedVersion` on the way in; on mismatch the domain layer throws `StaleReadError(currentTask)` and rolls the txn back via `BEGIN IMMEDIATE` (locks before the version check, so no other writer can interleave between read and write).
+
+Layer-specific contracts:
+
+- **IPC** (`tasks:update`): returns `{ task, conflict? }`. The renderer's modal will diff against `conflict.current` for slice 3; today it just refreshes the local copy.
+- **MCP** (`update_task`, `move_task`): exposes `expected_version`. When the agent pins, a stale read becomes a tool error. When the agent doesn't pin, the server still pins internally and retries once with the refreshed version — without the internal pin, an unpinned write would silently overwrite a concurrent change.
+- **CLI** (`writ task edit`): the editor mode pins to the version observed at editor-open and prints the now-current task as YAML on conflict so the user can re-run with the new state. Direct-flag mode (`--tag`, `--depends-on`) stays last-writer-wins — no read-edit-save gap to protect.
+
 ## Implementation patterns
 
 Patterns we'll need across phases. Not yet implemented; documented here so we get them right the first time.

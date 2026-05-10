@@ -217,9 +217,36 @@ export function updateTask(db: SqliteDb, id: string, update: TaskUpdate): Task |
   const hasTagUpdate = update.tags !== undefined;
   const hasDependencyUpdate = update.dependsOn !== undefined;
 
-  if (!hasFieldUpdate && !hasTagUpdate && !hasDependencyUpdate) return existing;
+  if (!hasFieldUpdate && !hasTagUpdate && !hasDependencyUpdate) {
+    // No-op. Still surface staleness if the caller pinned an obsolete
+    // version — they asked to be told.
+    if (update.expectedVersion !== undefined && existing.version !== update.expectedVersion) {
+      throw new StaleReadError(existing);
+    }
+    return existing;
+  }
 
+  // BEGIN IMMEDIATE so the OCC version check + the UPDATE see a single,
+  // writer-locked snapshot. With deferred (the default), another process
+  // could commit between our SELECT and our UPDATE inside the txn.
+  let result: Task | null = null;
   db.transaction(() => {
+    if (update.expectedVersion !== undefined) {
+      const row = db.prepare(`SELECT version FROM tasks WHERE id = ?`).get(id) as
+        | { version: number }
+        | undefined;
+      if (!row) {
+        // Disappeared between the getTask above and our write lock. Treat
+        // as not-found (the outer null contract) by aborting the txn.
+        throw new TaskNotFoundError(id);
+      }
+      if (row.version !== update.expectedVersion) {
+        // Re-hydrate inside the same writer-locked snapshot so the error
+        // carries the freshest current state. Throwing rolls the txn back.
+        throw new StaleReadError(getTask(db, id)!);
+      }
+    }
+
     if (hasFieldUpdate) {
       fields.push("updated_at = ?");
       params.push(Date.now());
@@ -243,9 +270,16 @@ export function updateTask(db: SqliteDb, id: string, update: TaskUpdate): Task |
         id,
       );
     }
-  })();
+    result = getTask(db, id);
+  }).immediate();
 
-  return getTask(db, id);
+  if (result === null) {
+    // Txn body completed but couldn't re-fetch — the row was deleted by a
+    // concurrent writer between our UPDATE and the re-read. Surface as the
+    // existing not-found contract.
+    return null;
+  }
+  return result;
 }
 
 export function deleteTask(db: SqliteDb, id: string): boolean {
@@ -275,6 +309,18 @@ export class TaskNotFoundError extends Error {
   override readonly name = "TaskNotFoundError";
   constructor(readonly input: string) {
     super(`No task matches '${input}'`);
+  }
+}
+
+/** Thrown by `updateTask` when the caller pinned `expectedVersion` and the
+ *  task's stored version no longer matches. `currentTask` carries the
+ *  hydrated row at the moment the conflict was detected so callers can
+ *  diff against the user's local edit (modal conflict UI) or re-render
+ *  for the user to retry (CLI editor mode). */
+export class StaleReadError extends Error {
+  override readonly name = "StaleReadError";
+  constructor(readonly currentTask: Task) {
+    super(`Stale read: task ${currentTask.id} is now at version ${currentTask.version}`);
   }
 }
 

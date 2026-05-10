@@ -56,4 +56,8 @@ export interface TaskUpdate {
   tags?: string[];
   /** When provided, replaces the task's dependsOn set. `[]` clears all. */
   dependsOn?: string[];
+  /** Optimistic-concurrency pin. If set and the task's stored `version`
+   *  differs at write time, the domain layer throws `StaleReadError` with
+   *  the now-current task and rolls back. Omit to keep last-write-wins. */
+  expectedVersion?: number;
 }

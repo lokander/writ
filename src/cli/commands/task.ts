@@ -7,6 +7,7 @@ import {
   listTasks,
   moveTask,
   resolveTaskId,
+  StaleReadError,
   updateTask,
 } from "../../shared/domain/tasks";
 import {
@@ -297,12 +298,12 @@ export function taskCommand(): Command {
     .description("Open a task in $EDITOR (frontmatter + markdown body)")
     .option(
       "--tag <spec>",
-      "Replace the task's tag set (NAME or NAME=COLOR). Repeatable. Skips the editor.",
+      "Replace the task's tag set (NAME or NAME=COLOR). Repeatable. Skips the editor. Last-writer-wins (no version pin).",
       collectString,
     )
     .option(
       "--depends-on <id>",
-      "Replace the task's dependency set (full ulid or unique suffix). Repeatable. Skips the editor.",
+      "Replace the task's dependency set (full ulid or unique suffix). Repeatable. Skips the editor. Last-writer-wins (no version pin).",
       collectString,
     )
     .action((idInput: string, opts: EditOptions) => {
@@ -312,7 +313,9 @@ export function taskCommand(): Command {
 
           // Direct flag mode: `--tag X --tag Y` (or `--depends-on …`) replaces
           // the set without opening the editor. Combines if both flags are
-          // passed together.
+          // passed together. We deliberately don't pin a version here — there
+          // was no read-edit-save loop where the user could have based their
+          // input on stale state, so OCC would just be friction.
           const directUpdates: { tags?: string[]; dependsOn?: string[] } = {};
           if (opts.tag !== undefined) directUpdates.tags = opts.tag;
           if (opts.dependsOn !== undefined) {
@@ -412,7 +415,11 @@ function editTaskViaEditor(db: import("../../shared/db").SqliteDb, task: Task): 
     if (Object.keys(update).length === 0) {
       console.log("No changes.");
     } else {
-      updateTask(db, task.id, update);
+      // Pin the version observed at editor-open. If a concurrent writer
+      // bumped the row while the user was in their editor, the write is
+      // refused: we surface the now-current task as YAML so the user can
+      // re-run with the new state instead of silently overwriting.
+      updateTask(db, task.id, { ...update, expectedVersion: task.version });
       const summary = Object.keys(update).join(", ");
       console.log(`Updated ${task.id.slice(-6)}  (${summary})`);
     }
@@ -423,6 +430,28 @@ function editTaskViaEditor(db: import("../../shared/db").SqliteDb, task: Task): 
     if (e instanceof TaskFileParseError && tempPath) {
       process.stderr.write(`${e.message}\n`);
       process.stderr.write(`Your edits are preserved at: ${tempPath}\n`);
+      process.exit(1);
+    }
+    if (e instanceof StaleReadError) {
+      const current = e.currentTask;
+      const cols = listColumns(db);
+      const colName = cols.find((c) => c.id === current.columnId)?.name ?? "";
+      const parentSuffix = current.parentId ? current.parentId.slice(-6) : undefined;
+      const yaml = serializeTaskFile({
+        task: current,
+        columnName: colName,
+        columnNames: cols.map((c) => c.name),
+        parentSuffix,
+        dependsOnSuffixes: current.dependsOn.map((id) => id.slice(-6)),
+      });
+      process.stderr.write(
+        `Conflict: task ${current.id.slice(-6)} was edited by someone else (now at version ${current.version}).\n`,
+      );
+      if (tempPath) {
+        process.stderr.write(`Your edits are preserved at: ${tempPath}\n`);
+      }
+      process.stderr.write(`Current state:\n\n`);
+      process.stdout.write(yaml);
       process.exit(1);
     }
     throw e;

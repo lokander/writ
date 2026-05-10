@@ -6,6 +6,7 @@ import { makeTestDb } from "../test-utils";
 import { getColumnByName, listColumns } from "./columns";
 import {
   AmbiguousTaskError,
+  StaleReadError,
   TaskNotFoundError,
   createTask,
   deleteTask,
@@ -161,6 +162,71 @@ describe("task version", () => {
       dependsOn: [blocker.id],
     });
     expect(updated?.version).toBe(1);
+  });
+});
+
+describe("updateTask + expectedVersion", () => {
+  it("succeeds when expectedVersion matches the current version", () => {
+    const task = createTask(db, { title: "v0" });
+    const updated = updateTask(db, task.id, { title: "v1", expectedVersion: 0 });
+    expect(updated?.title).toBe("v1");
+    expect(updated?.version).toBe(1);
+  });
+
+  it("throws StaleReadError when expectedVersion is behind", () => {
+    const task = createTask(db, { title: "v0" });
+    updateTask(db, task.id, { title: "v1" });
+    let caught: unknown;
+    try {
+      updateTask(db, task.id, { title: "v2-stale", expectedVersion: 0 });
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(StaleReadError);
+    const current = (caught as StaleReadError).currentTask;
+    expect(current.title).toBe("v1");
+    expect(current.version).toBe(1);
+  });
+
+  it("rolls the txn back on stale read — no partial writes land", () => {
+    const blocker = createTask(db, { title: "blocker" });
+    const task = createTask(db, { title: "before" });
+    updateTask(db, task.id, { title: "concurrent" });
+    expect(() =>
+      updateTask(db, task.id, {
+        title: "after",
+        tags: ["never"],
+        dependsOn: [blocker.id],
+        expectedVersion: 0,
+      }),
+    ).toThrow(StaleReadError);
+    const fresh = getTask(db, task.id)!;
+    expect(fresh.title).toBe("concurrent");
+    expect(fresh.tags).toEqual([]);
+    expect(fresh.dependsOn).toEqual([]);
+    // Only the one concurrent write bumped the version, not the failed one.
+    expect(fresh.version).toBe(1);
+  });
+
+  it("does not throw when expectedVersion is omitted (last-writer-wins)", () => {
+    const task = createTask(db, { title: "v0" });
+    updateTask(db, task.id, { title: "v1" });
+    const overwritten = updateTask(db, task.id, { title: "v2" });
+    expect(overwritten?.title).toBe("v2");
+    expect(overwritten?.version).toBe(2);
+  });
+
+  it("surfaces staleness on a no-op update when caller pinned a stale version", () => {
+    const task = createTask(db, { title: "v0" });
+    updateTask(db, task.id, { title: "v1" });
+    expect(() => updateTask(db, task.id, { expectedVersion: 0 })).toThrow(StaleReadError);
+  });
+
+  it("treats matching expectedVersion on a no-op as a successful no-op", () => {
+    const task = createTask(db, { title: "v0" });
+    const result = updateTask(db, task.id, { expectedVersion: 0 });
+    expect(result?.version).toBe(0);
+    expect(result?.title).toBe("v0");
   });
 });
 

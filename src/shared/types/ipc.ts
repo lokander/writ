@@ -1,3 +1,5 @@
+import type { Task } from "./task";
+
 export interface ProjectInfo {
   root: string;
   /** Home-relative form of `root` for display (e.g. `~/projects/writ`).
@@ -11,4 +13,18 @@ export interface ProjectInfo {
   /** User-set display name override, or null to fall back to the cwd
    *  basename. The renderer is responsible for rendering the fallback. */
   displayName: string | null;
+}
+
+/** Result envelope for `tasks:update`. Throwing across IPC loses class
+ *  identity, so the stale-read case rides on the same shape with a populated
+ *  `conflict` field — the renderer branches on it to drive the conflict
+ *  modal (slice 3) without leaking the failure to the catch-all error toast.
+ *
+ *  Invariants: when `conflict` is present, the write didn't land and `task`
+ *  is null. When `conflict` is absent, `task` is the post-write row (or null
+ *  if the row was already gone). Renderers that don't care about OCC can
+ *  ignore `conflict` and treat the envelope as `Task | null`. */
+export interface UpdateTaskResult {
+  task: Task | null;
+  conflict?: { error: "stale-read"; current: Task };
 }

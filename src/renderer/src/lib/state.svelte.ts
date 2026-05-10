@@ -86,7 +86,18 @@ export class WritState {
 
   async updateTask(id: string, update: TaskUpdate): Promise<Task | null> {
     try {
-      const updated = await window.api.tasks.update(id, $state.snapshot(update));
+      const result = await window.api.tasks.update(id, $state.snapshot(update));
+      if (result.conflict) {
+        // Stale-read: a concurrent writer beat us. Refresh the local copy of
+        // that task with the now-current state so the UI shows fresh values
+        // immediately. The conflict modal (slice 3) will branch on this
+        // path; for now we surface the freshness in-place and don't write
+        // an error so unrelated tasks aren't disturbed.
+        const current = result.conflict.current;
+        this.tasks = this.tasks.map((t) => (t.id === id ? current : t));
+        return null;
+      }
+      const updated = result.task;
       if (!updated) return null;
       this.tasks = this.tasks.map((t) => (t.id === id ? updated : t));
       if (update.tags !== undefined) await this.refreshTags();

@@ -17,8 +17,14 @@ import {
   setDisplayName,
 } from "../shared/domain/project";
 import { listTags } from "../shared/domain/tags";
-import { createTask, deleteTask, listTasks, updateTask } from "../shared/domain/tasks";
-import type { NewTask, ProjectInfo, TaskUpdate } from "../shared/types";
+import {
+  createTask,
+  deleteTask,
+  listTasks,
+  StaleReadError,
+  updateTask,
+} from "../shared/domain/tasks";
+import type { NewTask, ProjectInfo, TaskUpdate, UpdateTaskResult } from "../shared/types";
 
 let currentDb: SqliteDb | null = null;
 let currentProject: ProjectInfo | null = null;
@@ -220,11 +226,21 @@ function registerIpcHandlers(): void {
     noteSelfWrite();
     return task;
   });
-  ipcMain.handle("tasks:update", (_event, id: string, update: TaskUpdate) => {
+  ipcMain.handle("tasks:update", (_event, id: string, update: TaskUpdate): UpdateTaskResult => {
     if (!currentDb) throw new Error("No project open");
-    const updated = updateTask(currentDb, id, update);
-    noteSelfWrite();
-    return updated;
+    try {
+      const task = updateTask(currentDb, id, update);
+      noteSelfWrite();
+      return { task };
+    } catch (e) {
+      if (e instanceof StaleReadError) {
+        // Don't note a self-write — nothing landed. The renderer's modal
+        // gets a structured envelope it can diff against; other writers
+        // bumped the row, so an fs.watch refresh will follow naturally.
+        return { task: null, conflict: { error: "stale-read", current: e.currentTask } };
+      }
+      throw e;
+    }
   });
   ipcMain.handle("tasks:delete", (_event, id: string) => {
     if (!currentDb) throw new Error("No project open");
