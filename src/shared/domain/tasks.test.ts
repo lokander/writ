@@ -104,6 +104,36 @@ describe("listTasks", () => {
     createTask(db, { title: "b", priority: 2 });
     expect(listTasks(db, { priorities: [] })).toHaveLength(2);
   });
+
+  it("filters by query (case-insensitive substring on title)", () => {
+    createTask(db, { title: "Refactor auth flow" });
+    createTask(db, { title: "Fix bug in AuthSession" });
+    createTask(db, { title: "Unrelated thing" });
+
+    const titles = (q: string): string[] => listTasks(db, { query: q }).map((t) => t.title);
+    expect(titles("auth").sort()).toEqual(["Fix bug in AuthSession", "Refactor auth flow"]);
+    expect(titles("AUTH").sort()).toEqual(["Fix bug in AuthSession", "Refactor auth flow"]);
+    expect(titles("session")).toEqual(["Fix bug in AuthSession"]);
+    expect(titles("nope")).toEqual([]);
+  });
+
+  it("treats an empty query as a no-op", () => {
+    createTask(db, { title: "a" });
+    createTask(db, { title: "b" });
+    expect(listTasks(db, { query: "" })).toHaveLength(2);
+  });
+
+  it("escapes LIKE metacharacters in query so they match literally", () => {
+    createTask(db, { title: "50% off promo" });
+    createTask(db, { title: "100 dollars off" });
+    createTask(db, { title: "snake_case helper" });
+    createTask(db, { title: "snakeXcase helper" });
+
+    expect(listTasks(db, { query: "50%" }).map((t) => t.title)).toEqual(["50% off promo"]);
+    expect(listTasks(db, { query: "snake_case" }).map((t) => t.title)).toEqual([
+      "snake_case helper",
+    ]);
+  });
 });
 
 describe("updateTask", () => {

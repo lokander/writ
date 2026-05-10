@@ -224,6 +224,12 @@ export function registerTools(server: McpServer): void {
           .describe(
             "Filter to tasks tagged with ANY of these names (OR). Combine with `tag` to AND across the union.",
           ),
+        query: z
+          .string()
+          .optional()
+          .describe(
+            "Filter to tasks whose title contains this substring (case-insensitive). Empty string is a no-op.",
+          ),
         ready: z
           .boolean()
           .optional()
@@ -236,13 +242,14 @@ export function registerTools(server: McpServer): void {
           .describe("When true, return only tasks with at least one open blocker."),
       },
     },
-    async ({ column, parent_id, tag, any_tag, ready, blocked }) =>
+    async ({ column, parent_id, tag, any_tag, query, ready, blocked }) =>
       withDb((db) => {
         const filter: ListFilter = {};
         if (column) filter.columnId = resolveColumnId(db, column);
         if (parent_id !== undefined) filter.parentId = parent_id;
         if (tag !== undefined) filter.tags = tag;
         if (any_tag !== undefined) filter.anyTags = any_tag;
+        if (query !== undefined) filter.query = query;
         if (ready !== undefined) filter.ready = ready;
         if (blocked !== undefined) filter.blocked = blocked;
         const ctx = buildContext(db);

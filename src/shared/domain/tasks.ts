@@ -121,6 +121,8 @@ export interface ListFilter {
   anyTags?: string[];
   // OR filter: returned tasks must have one of these priorities. Empty / undefined is a no-op.
   priorities?: Priority[];
+  // Case-insensitive substring match on title. Empty string is a no-op.
+  query?: string;
   // Only tasks with no open blockers (or no dependencies at all).
   ready?: boolean;
   // Only tasks with at least one open blocker.
@@ -142,6 +144,14 @@ export function listTasks(db: SqliteDb, filter: ListFilter = {}): Task[] {
       conditions.push("parent_id = ?");
       params.push(filter.parentId);
     }
+  }
+  if (filter.query && filter.query.length > 0) {
+    // Escape LIKE metacharacters so an input like `50% off` doesn't fuzzy-match.
+    // LOWER on both sides so the match is case-insensitive even for non-ASCII
+    // — SQLite's default LIKE is only case-insensitive within ASCII.
+    const escaped = filter.query.replace(/[\\%_]/g, "\\$&");
+    conditions.push("LOWER(title) LIKE LOWER(?) ESCAPE '\\'");
+    params.push(`%${escaped}%`);
   }
 
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";

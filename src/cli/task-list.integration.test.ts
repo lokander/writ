@@ -85,6 +85,20 @@ describe.concurrent("writ task list", () => {
       expect(urgentOrHigh.stdout).not.toContain("low-task");
     }));
 
+  it("--grep filters by case-insensitive title substring", () =>
+    withProject(async (dir) => {
+      await init(dir);
+      await runWrit(dir, ["task", "add", "Refactor auth flow"]);
+      await runWrit(dir, ["task", "add", "Fix bug in AuthSession"]);
+      await runWrit(dir, ["task", "add", "Unrelated thing"]);
+
+      const r = await runWrit(dir, ["task", "list", "--grep", "auth"]);
+      expect(r.exitCode).toBe(0);
+      expect(r.stdout).toContain("Refactor auth flow");
+      expect(r.stdout).toContain("Fix bug in AuthSession");
+      expect(r.stdout).not.toContain("Unrelated thing");
+    }));
+
   it("--ready hides blocked tasks; --blocked hides ready ones", () =>
     withProject(async (dir) => {
       await init(dir);

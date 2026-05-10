@@ -69,6 +69,7 @@ interface ListOptions {
   tag?: string[];
   anyTag?: string[];
   priority?: Priority[];
+  grep?: string;
   showDone?: boolean;
   showArchived?: boolean;
   ready?: boolean;
@@ -177,6 +178,10 @@ export function taskCommand(): Command {
       "Filter to tasks at this priority (u/h/n/l or 0-3). Repeatable; multiple --priority flags OR.",
       collectPriority,
     )
+    .option(
+      "--grep <pattern>",
+      "Filter to tasks whose title contains this substring (case-insensitive)",
+    )
     .option("--show-done", "Include the Done column (hidden by default)")
     .option("--show-archived", "Include the Archived column (hidden by default)")
     .option("--ready", "Only tasks whose blockers (if any) are all in Done or Archived")
@@ -188,6 +193,7 @@ export function taskCommand(): Command {
           tags: opts.tag,
           anyTags: opts.anyTag,
           priorities: opts.priority,
+          query: opts.grep,
           ready: opts.ready,
           blocked: opts.blocked,
         });
@@ -226,8 +232,8 @@ export function taskCommand(): Command {
           filteredColumns = columns.filter((c) => !hiddenColumnIds.has(c.id));
         }
 
-        // Narrowing filters (tag/any-tag/priority/ready/blocked) can leave a
-        // child in the visible set without its parent. The hierarchical render
+        // Narrowing filters (tag/any-tag/priority/grep/ready/blocked) can leave
+        // a child in the visible set without its parent. The hierarchical render
         // would hide such orphans because it walks down from top-level tasks.
         // Switch to a flat per-column render whenever a narrowing filter is
         // on, so every matching task surfaces.
@@ -235,6 +241,7 @@ export function taskCommand(): Command {
           (opts.tag && opts.tag.length > 0) ||
           (opts.anyTag && opts.anyTag.length > 0) ||
           (opts.priority && opts.priority.length > 0) ||
+          (opts.grep && opts.grep.length > 0) ||
           opts.ready ||
           opts.blocked,
         );
