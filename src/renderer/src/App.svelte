@@ -420,9 +420,15 @@
         Run <code class="kbd">writ init</code> in the directory you started the app from.
       </p>
     </div>
-  {:else if writState.error}
-    <div class="alert alert-error m-4">{writState.error}</div>
   {:else}
+    {#if writState.error}
+      <!-- Non-destructive banner above the main view. Mutations that fail
+           (drag rollback, modal save error) used to swap out the kanban
+           entirely; surfacing the error inline here keeps the user's work
+           visible while still flagging the failure. Cleared on the next
+           successful loadAll (push refresh, manual reload). -->
+      <div class="alert alert-error mx-4 mt-4">{writState.error}</div>
+    {/if}
     <div
       class="flex flex-wrap items-center gap-x-4 gap-y-2 border-b px-4 py-2 transition-colors {filtersActive
         ? 'border-primary/40 bg-primary/5'

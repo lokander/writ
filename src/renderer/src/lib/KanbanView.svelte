@@ -81,15 +81,29 @@
     if (!task) return;
     if (task.columnId === targetColumnId) return; // same-column drop is a no-op
 
+    // Snapshot pre-drop fields so we can roll back if the IPC fails — without
+    // this, a thrown `tasks:update` leaves the card in its new column visually
+    // while the DB still holds the old one.
+    const previousColumnId = task.columnId;
+    const previousPosition = task.position;
     const newPosition = nextPositionInColumn(targetColumnId);
 
     // Optimistic local update so the card jumps before the IPC round-trips.
-    // The IPC's response will replace this with the canonical updated row.
+    // On the ok / conflict paths writState.updateTask already replaces this
+    // entry with the canonical row; only "missing" (IPC error or row gone)
+    // needs an explicit revert.
     writState.tasks = writState.tasks.map((t) =>
       t.id === taskId ? { ...t, columnId: targetColumnId, position: newPosition } : t,
     );
 
-    writState.updateTask(taskId, { columnId: targetColumnId, position: newPosition });
+    void writState
+      .updateTask(taskId, { columnId: targetColumnId, position: newPosition })
+      .then((outcome) => {
+        if (outcome.kind !== "missing") return;
+        writState.tasks = writState.tasks.map((t) =>
+          t.id === taskId ? { ...t, columnId: previousColumnId, position: previousPosition } : t,
+        );
+      });
   }
 
   // One global monitor watches every drop in the kanban. Cleaner than
