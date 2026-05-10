@@ -5,6 +5,8 @@ directories:
 files:
   - "!**/.vscode/*"
   - "!src/*"
+  - "!build/*"
+  - "!packaging/*"
   - "!electron.vite.config.{js,ts,mjs,cjs}"
   - "!svelte.config.mjs"
   - "!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}"
@@ -12,6 +14,12 @@ files:
   - "!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}"
 asarUnpack:
   - resources/**
+# Ship the launcher script inside the package so the install hook can
+# symlink /usr/bin/writ to it. `to:` is relative to the install dir (e.g.
+# /opt/writ/ for pacman), so the final path is /opt/writ/bin/writ.
+extraFiles:
+  - from: build/writ-launcher.sh
+    to: bin/writ
 win:
   executableName: writ
 nsis:
@@ -30,12 +38,22 @@ mac:
 dmg:
   artifactName: ${name}-${version}.${ext}
 linux:
+  # v1 ships pacman only (Arch). AppImage / snap / deb are separate backlog
+  # tasks (55JQQH / F40AVM / KZDJSY) with their own CLI-on-PATH wiring.
   target:
-    - AppImage
-    - snap
-    - deb
-  maintainer: electronjs.org
+    - pacman
+  maintainer: "Fredrik Lokander <fredrik@lokander.no>"
   category: Utility
+  executableName: writ
+pacman:
+  # Pass through to fpm's pacman generator. `--after-install` and
+  # `--before-remove` become the body of pacman's post_install() and
+  # pre_remove() functions inside the package's .INSTALL file. The
+  # post-install script symlinks /usr/bin/writ → /opt/writ/bin/writ; the
+  # pre-remove script cleans the symlink up.
+  fpm:
+    - "--after-install=build/maintainer/post-install.sh"
+    - "--before-remove=build/maintainer/pre-remove.sh"
 appImage:
   artifactName: ${name}-${version}.${ext}
 npmRebuild: false
