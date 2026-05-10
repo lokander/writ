@@ -1,31 +1,21 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { FlagIcon, FolderOpenIcon, FunnelIcon, TagIcon, XIcon } from "phosphor-svelte";
+  import { FolderOpenIcon } from "phosphor-svelte";
 
   import AddTaskModal from "./lib/modal/AddTaskModal.svelte";
   import AppBar, { VIEWS, type View } from "./lib/bar/AppBar.svelte";
+  import FilterBar, { STATE_FILTERS, type StateFilter } from "./lib/bar/FilterBar.svelte";
   import ConfirmDialog from "./lib/modal/ConfirmDialog.svelte";
   import KanbanView from "./lib/view/KanbanView.svelte";
   import ListView from "./lib/view/ListView.svelte";
-  import TagChip from "./lib/chip/TagChip.svelte";
   import TaskContextMenu from "./lib/picker/TaskContextMenu.svelte";
   import TaskEditModal from "./lib/modal/TaskEditModal.svelte";
   import ToastStack from "./lib/toast/ToastStack.svelte";
-  import { PRIORITY_DOT_CLASS } from "./lib/priority-color";
   import { writState } from "./lib/state.svelte";
   import { indexTags } from "./lib/tag-color";
   import { toast } from "./lib/toast/toast.svelte";
-  import { PRIORITY_NAMES, type Priority, type Task } from "../../shared/types";
+  import type { Priority, Task } from "../../shared/types";
 
-  type StateFilter = "any" | "ready" | "blocked";
-  const STATE_FILTERS: StateFilter[] = ["any", "ready", "blocked"];
-  // Order matches the priority enum so the chip row reads urgent → low.
-  const PRIORITY_CHIPS: { value: Priority; label: string; dotClass: string }[] = [
-    { value: 0, label: PRIORITY_NAMES[0], dotClass: PRIORITY_DOT_CLASS[0] },
-    { value: 1, label: PRIORITY_NAMES[1], dotClass: PRIORITY_DOT_CLASS[1] },
-    { value: 2, label: PRIORITY_NAMES[2], dotClass: PRIORITY_DOT_CLASS[2] },
-    { value: 3, label: PRIORITY_NAMES[3], dotClass: PRIORITY_DOT_CLASS[3] },
-  ];
   const FILTER_STORAGE_KEY = "writ:filter";
   const VIEW_STORAGE_KEY = "writ:view";
 
@@ -205,29 +195,6 @@
 
   const visibleTagChips = $derived(writState.tags.filter((t) => tagsInView[t.name]));
 
-  function toggleTagFilter(name: string): void {
-    if (filterTags.includes(name)) {
-      filterTags = filterTags.filter((t) => t !== name);
-    } else {
-      filterTags = [...filterTags, name];
-    }
-  }
-
-  function togglePriorityFilter(p: Priority): void {
-    if (filterPriorities.includes(p)) {
-      filterPriorities = filterPriorities.filter((x) => x !== p);
-    } else {
-      filterPriorities = [...filterPriorities, p];
-    }
-  }
-
-  function clearFilters(): void {
-    filterTags = [];
-    filterPriorities = [];
-    tagMode = "all";
-    stateFilter = "any";
-  }
-
   onMount(() => {
     writState.loadAll();
     try {
@@ -393,85 +360,14 @@
          the tree, not an inline banner. `writState.error` is now only the
          empty-state surface (handled in the !writState.project branch
          above). -->
-    <div
-      class="flex flex-wrap items-center gap-x-4 gap-y-2 border-b px-4 py-2 transition-colors {filtersActive
-        ? 'border-primary/40 bg-primary/5'
-        : 'border-base-300 bg-base-200'}"
-    >
-      <div class="flex items-center gap-2">
-        <FunnelIcon size={20} class="ml-0.5 opacity-60" aria-label="Filter" />
-        <div class="join">
-          {#each STATE_FILTERS as opt (opt)}
-            <button
-              type="button"
-              class="btn btn-primary btn-xs join-item"
-              class:btn-soft={stateFilter !== opt}
-              onclick={() => (stateFilter = opt)}
-            >
-              {opt === "any" ? "All" : opt[0].toUpperCase() + opt.slice(1)}
-            </button>
-          {/each}
-        </div>
-      </div>
-
-      <div class="flex flex-wrap items-center gap-1.5">
-        <FlagIcon size={14} class="opacity-50" aria-label="Priority" />
-        {#each PRIORITY_CHIPS as chip (chip.value)}
-          {@const active = filterPriorities.includes(chip.value)}
-          <button
-            type="button"
-            class="flex items-center gap-1 rounded-full border border-base-content/20 px-2 py-0.5 text-xs transition-opacity"
-            class:opacity-40={!active}
-            aria-pressed={active}
-            onclick={() => togglePriorityFilter(chip.value)}
-          >
-            <span class="inline-block h-2 w-2 rounded-full {chip.dotClass}"></span>
-            <span class="capitalize">{chip.label}</span>
-          </button>
-        {/each}
-      </div>
-
-      {#if visibleTagChips.length > 0}
-        <div class="flex flex-wrap items-center gap-2">
-          <TagIcon size={14} class="opacity-50" aria-label="Tags" />
-          <div class="join">
-            {#each ["all", "any"] as const as mode (mode)}
-              <button
-                type="button"
-                class="btn btn-primary btn-xs join-item"
-                class:btn-soft={tagMode !== mode}
-                title={mode === "all"
-                  ? "Match tasks tagged with every selected tag"
-                  : "Match tasks tagged with any of the selected tags"}
-                onclick={() => (tagMode = mode)}
-              >
-                {mode[0].toUpperCase() + mode.slice(1)}
-              </button>
-            {/each}
-          </div>
-          <div class="flex flex-wrap items-center gap-1">
-            {#each visibleTagChips as tag (tag.name)}
-              {@const active = filterTags.includes(tag.name)}
-              <button
-                type="button"
-                class="cursor-pointer transition-opacity"
-                class:opacity-40={!active}
-                aria-pressed={active}
-                onclick={() => toggleTagFilter(tag.name)}
-              >
-                <TagChip name={tag.name} color={tag.color} />
-              </button>
-            {/each}
-          </div>
-        </div>
-      {/if}
-
-      {#if filtersActive}
-        <button type="button" class="btn btn-ghost btn-xs ml-auto" onclick={clearFilters}>
-          <XIcon size={12} weight="bold" />
-        </button>
-      {/if}
-    </div>
+    <FilterBar
+      bind:tags={filterTags}
+      bind:priorities={filterPriorities}
+      bind:tagMode
+      bind:state={stateFilter}
+      {visibleTagChips}
+      {filtersActive}
+    />
 
     {#if view === "kanban"}
       <KanbanView
