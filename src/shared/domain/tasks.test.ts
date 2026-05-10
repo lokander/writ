@@ -98,6 +98,72 @@ describe("updateTask", () => {
   });
 });
 
+describe("task version", () => {
+  it("starts at 0 on createTask", () => {
+    const task = createTask(db, { title: "v0" });
+    expect(task.version).toBe(0);
+  });
+
+  it("increments on a field update", () => {
+    const task = createTask(db, { title: "before" });
+    const updated = updateTask(db, task.id, { title: "after" });
+    expect(updated?.version).toBe(1);
+  });
+
+  it("increments on a tag-only update", () => {
+    const task = createTask(db, { title: "tagged" });
+    const updated = updateTask(db, task.id, { tags: ["alpha"] });
+    expect(updated?.version).toBe(1);
+  });
+
+  it("increments on a dependency-only update", () => {
+    const blocker = createTask(db, { title: "blocker" });
+    const task = createTask(db, { title: "blocked" });
+    const updated = updateTask(db, task.id, { dependsOn: [blocker.id] });
+    expect(updated?.version).toBe(1);
+  });
+
+  it("increments on moveTask", () => {
+    const doing = getColumnByName(db, "Doing")!;
+    const task = createTask(db, { title: "moving" });
+    const moved = moveTask(db, task.id, doing.id);
+    expect(moved?.version).toBe(1);
+  });
+
+  it("does not increment on a no-op update (no fields/tags/deps provided)", () => {
+    const task = createTask(db, { title: "untouched" });
+    const updated = updateTask(db, task.id, {});
+    expect(updated?.version).toBe(0);
+    expect(updated?.updatedAt).toBe(task.updatedAt);
+  });
+
+  it("bumps updatedAt on a tag-only update", async () => {
+    const task = createTask(db, { title: "tagged" });
+    await new Promise((r) => setTimeout(r, 2));
+    const updated = updateTask(db, task.id, { tags: ["alpha"] });
+    expect(updated!.updatedAt).toBeGreaterThan(task.updatedAt);
+  });
+
+  it("bumps updatedAt on a dependency-only update", async () => {
+    const blocker = createTask(db, { title: "blocker" });
+    const task = createTask(db, { title: "blocked" });
+    await new Promise((r) => setTimeout(r, 2));
+    const updated = updateTask(db, task.id, { dependsOn: [blocker.id] });
+    expect(updated!.updatedAt).toBeGreaterThan(task.updatedAt);
+  });
+
+  it("bumps once per call even when fields, tags, and deps all change", () => {
+    const blocker = createTask(db, { title: "blocker" });
+    const task = createTask(db, { title: "combo" });
+    const updated = updateTask(db, task.id, {
+      title: "renamed",
+      tags: ["x"],
+      dependsOn: [blocker.id],
+    });
+    expect(updated?.version).toBe(1);
+  });
+});
+
 describe("moveTask", () => {
   it("changes column and appends to bottom of target column", () => {
     const doing = getColumnByName(db, "Doing")!;

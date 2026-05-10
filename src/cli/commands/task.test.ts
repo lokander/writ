@@ -13,6 +13,7 @@ function makeTask(overrides: Partial<Task> = {}): Task {
     description: "",
     priority: 2,
     position: 1000,
+    version: 0,
     tags: [],
     dependsOn: [],
     blockedBy: [],

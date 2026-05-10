@@ -13,6 +13,7 @@ interface TaskRow {
   description: string;
   priority: number;
   position: number;
+  version: number;
   created_at: number;
   updated_at: number;
 }
@@ -26,6 +27,7 @@ function fromRow(row: TaskRow): Task {
     description: row.description,
     priority: row.priority as Priority,
     position: row.position,
+    version: row.version,
     tags: [],
     dependsOn: [],
     blockedBy: [],
@@ -221,6 +223,7 @@ export function updateTask(db: SqliteDb, id: string, update: TaskUpdate): Task |
     if (hasFieldUpdate) {
       fields.push("updated_at = ?");
       params.push(Date.now());
+      fields.push("version = version + 1");
       params.push(id);
       db.prepare(`UPDATE tasks SET ${fields.join(", ")} WHERE id = ?`).run(...params);
     }
@@ -229,6 +232,16 @@ export function updateTask(db: SqliteDb, id: string, update: TaskUpdate): Task |
     }
     if (hasDependencyUpdate) {
       setDependencies(db, id, update.dependsOn!);
+    }
+    // Tag/dep-only updates still bump version + updated_at: version so a
+    // stale modal that overwrites tags is caught by OCC, updated_at because
+    // a tag change IS a real user edit (parity with how a position-only
+    // drag already bumps updated_at via the field path).
+    if (!hasFieldUpdate && (hasTagUpdate || hasDependencyUpdate)) {
+      db.prepare(`UPDATE tasks SET version = version + 1, updated_at = ? WHERE id = ?`).run(
+        Date.now(),
+        id,
+      );
     }
   })();
 

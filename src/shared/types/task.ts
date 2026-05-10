@@ -15,6 +15,10 @@ export interface Task {
   description: string;
   priority: Priority;
   position: number;
+  /** Optimistic-concurrency version. Bumped on every successful update
+   *  (fields, tags, or deps). Starts at 0; pin via expectedVersion to
+   *  detect stale reads. */
+  version: number;
   /** Tag names (sorted). Always populated by getTask / listTasks. */
   tags: string[];
   /** Ids of all tasks this one depends on. Always populated. */

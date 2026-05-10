@@ -87,6 +87,14 @@ const MIGRATIONS: ((db: SqliteDb) => void)[] = [
     if (exists) return;
     db.prepare(`INSERT INTO meta (key, value) VALUES ('project_id', ?)`).run(ulid());
   },
+
+  // v5: per-task optimistic-concurrency version. Bumped on every successful
+  // updateTask write (fields, tags, or deps). Existing rows start at 0, so
+  // a stale read that pinned no version still wins last-write-wins until the
+  // first update lands.
+  (db) => {
+    db.exec(`ALTER TABLE tasks ADD COLUMN version INTEGER NOT NULL DEFAULT 0`);
+  },
 ];
 
 function metaTableExists(db: SqliteDb): boolean {

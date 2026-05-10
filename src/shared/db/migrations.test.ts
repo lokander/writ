@@ -25,7 +25,7 @@ describe("applyMigrations", () => {
     const version = db.prepare(`SELECT value FROM meta WHERE key = 'schema_version'`).get() as
       | { value: string }
       | undefined;
-    expect(version?.value).toBe("4");
+    expect(version?.value).toBe("5");
   });
 
   it("is idempotent", () => {
@@ -36,7 +36,7 @@ describe("applyMigrations", () => {
     const version = db.prepare(`SELECT value FROM meta WHERE key = 'schema_version'`).get() as
       | { value: string }
       | undefined;
-    expect(version?.value).toBe("4");
+    expect(version?.value).toBe("5");
   });
 
   it("v3 adds an Archived column to a v2 project that doesn't have one", () => {
@@ -160,6 +160,37 @@ describe("applyMigrations", () => {
     expect(row?.value).toBe("01ABCDEFGHJKMNPQRSTVWXYZ12");
   });
 
+  it("v5 backfills version=0 on existing tasks", () => {
+    const db = openDatabase(":memory:");
+    db.exec(`
+      CREATE TABLE meta ( key TEXT PRIMARY KEY, value TEXT NOT NULL );
+      CREATE TABLE columns ( id TEXT PRIMARY KEY, name TEXT NOT NULL, position REAL NOT NULL );
+      CREATE TABLE tasks (
+        id TEXT PRIMARY KEY, parent_id TEXT, column_id TEXT NOT NULL,
+        title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
+        priority INTEGER NOT NULL DEFAULT 2, position REAL NOT NULL,
+        created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+      );
+      CREATE TABLE tags ( id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, color TEXT );
+      CREATE TABLE task_tags ( task_id TEXT, tag_id TEXT, PRIMARY KEY (task_id, tag_id) );
+      CREATE TABLE task_dependencies (
+        task_id TEXT, depends_on_id TEXT, PRIMARY KEY (task_id, depends_on_id)
+      );
+      INSERT INTO meta (key, value) VALUES ('schema_version', '4');
+      INSERT INTO meta (key, value) VALUES ('project_id', '01ABCDEFGHJKMNPQRSTVWXYZ12');
+      INSERT INTO columns (id, name, position) VALUES ('c1', 'Backlog', 1000);
+      INSERT INTO tasks (id, column_id, title, position, created_at, updated_at)
+        VALUES ('t1', 'c1', 'Pre-existing', 1000, 1000, 1000);
+    `);
+
+    applyMigrations(db);
+
+    const row = db.prepare(`SELECT version FROM tasks WHERE id = 't1'`).get() as
+      | { version: number }
+      | undefined;
+    expect(row?.version).toBe(0);
+  });
+
   it("upgrades a v1 database to v2 without losing v1 data", () => {
     const db = openDatabase(":memory:");
     // Apply only v1 by running the first migration directly (simulate an older
@@ -200,6 +231,6 @@ describe("applyMigrations", () => {
     const version = db.prepare(`SELECT value FROM meta WHERE key = 'schema_version'`).get() as
       | { value: string }
       | undefined;
-    expect(version?.value).toBe("4");
+    expect(version?.value).toBe("5");
   });
 });
