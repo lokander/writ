@@ -535,7 +535,6 @@
       {#if filtersActive}
         <button type="button" class="btn btn-ghost btn-xs ml-auto" onclick={clearFilters}>
           <XIcon size={12} weight="bold" />
-          Clear
         </button>
       {/if}
     </div>
