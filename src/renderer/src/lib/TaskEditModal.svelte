@@ -22,6 +22,7 @@
   } from "./diff-task";
   import { indexTags } from "./tag-color";
   import { renderMarkdown } from "./markdown";
+  import { toast } from "./toast.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import ConflictDialog from "./ConflictDialog.svelte";
   import DependsOnPicker from "./DependsOnPicker.svelte";
@@ -198,6 +199,43 @@
 
   function cancelDiscard(): void {
     pendingDiscardAction = null;
+  }
+
+  // Delegated click handler for markdown-rendered task id links (see
+  // `linkifyTaskIds` in `markdown.ts`). Walks up from the click target to
+  // find the nearest `[data-task-id]`, resolves it against the live task
+  // list, and switches the modal — through `tryDiscardingAction` so unsaved
+  // edits surface the discard confirm.
+  //
+  // - No-match: silent no-op (the task description acceptance criterion
+  //   explicitly calls out "no error spam" for unresolvable backticked
+  //   strings — a user typing a random uppercase 6-char token shouldn't
+  //   trigger a toast every click).
+  // - Ambiguous: a 6-char suffix can in theory collide across two tasks.
+  //   Surface a warning so the user knows why the click did nothing.
+  // - Clicking your own id is a no-op (no point switching to the modal
+  //   you're already in).
+  function onDescriptionClick(event: MouseEvent): void {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const link = target.closest<HTMLElement>("[data-task-id]");
+    if (!link) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const ref = link.dataset.taskId;
+    if (!ref) return;
+
+    const matches = writState.tasks.filter((t) => t.id === ref || t.id.endsWith(ref));
+    if (matches.length === 0) return;
+    if (matches.length > 1) {
+      toast.show(`Ambiguous task id '${ref}' — ${matches.length} matches`, {
+        variant: "warning",
+      });
+      return;
+    }
+    const resolved = matches[0]!;
+    if (resolved.id === taskId) return;
+    tryDiscardingAction(() => onSwitch(resolved.id));
   }
 
   // Conflict state. When `tasks:update` returns `{ kind: "conflict" }`,
@@ -474,8 +512,15 @@
         {#if task.description.trim().length > 0}
           <!-- markdown.ts strips raw HTML at parse time (html: false), so
                {@html} here is safe — no script/iframe/etc. tags can ride
-               through. eslint can't see that, so the rule is suppressed. -->
-          <div class="prose prose-sm max-w-none select-text rounded-lg bg-base-200 px-4 py-3">
+               through. eslint can't see that, so the rule is suppressed.
+               onclick is delegated: linkifyTaskIds inserts <a> tags with
+               data-task-id attrs that we route to onSwitch. -->
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div
+            class="prose prose-sm max-w-none select-text rounded-lg bg-base-200 px-4 py-3"
+            onclick={onDescriptionClick}
+          >
             <!-- eslint-disable-next-line svelte/no-at-html-tags -->
             {@html renderMarkdown(task.description)}
           </div>
