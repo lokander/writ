@@ -20,17 +20,17 @@ A local-first desktop TODO app that replaces scattered `TODO.md` files. Inspired
 
 Three things ship as one project:
 
-1. **`writ` CLI** — small Node binary. Subcommands for `init`, `task`, and `writ mcp` (stdio MCP server) today; `register` and bare-`writ` desktop launch are planned (see writ Backlog). Fast startup; never boots Electron unless asked to.
-2. **`writ` desktop app** — Electron + Svelte 5 + TypeScript. Edits tasks via IPC into the same domain layer the CLI uses. Today: a list view with column tabs and a kanban view with drag-and-drop between columns (toggle in the navbar), sharing a view-first edit modal. Aggregating across registered projects is planned.
+1. **`writ` CLI** — small Node binary. Subcommands for `init`, `task`, `project`, `mcp` (the stdio MCP server, with `install` / `uninstall` helpers for `.mcp.json`), and `completion` (bash / zsh / fish). Bare `writ` (no subcommand) launches or focuses the desktop app. Fast startup; never boots Electron for the subcommand path.
+2. **`writ` desktop app** — Electron + Svelte 5 + TypeScript. Edits tasks via IPC into the same domain layer the CLI uses. Today: a list view with column tabs and a kanban view with drag-and-drop between columns (toggle in the navbar), sharing a view-first edit modal. One project per window; switch via the file-dialog picker (which walks up from the chosen path to find a `.writ/`). An aggregated cross-project view was considered and rejected — see the decision log.
 3. **Shared domain library** — schema, migrations, task CRUD, project resolution. Both the CLI and the Electron main process import it. There is no other place that mutates the database.
 
 ```
-   ┌──────────────┐                 ┌────────────────────────────┐
-   │  Claude Code │ ── stdio MCP ─▶ │ writ-mcp (CLI subcommand)  │
-   └──────────────┘                 └─────────────┬──────────────┘
-                                                  │
-   ┌──────────────┐    direct                     ▼
-   │  shell user  │ ── invoke ───▶  writ task add/list/...   ┐
+   ┌──────────────┐                  ┌────────────────────────────┐
+   │  Claude Code │ ── stdio MCP ─▶ │  writ-mcp (CLI subcommand) │
+   └──────────────┘                  └─────────────┬──────────────┘
+                                                   │
+   ┌──────────────┐    direct                      ▼
+   │  shell user  │ ── invoke ───▶  writ task add/list/...  ┐
    └──────────────┘                                          │
                                                              ▼
                                               ┌──────────────────────┐
@@ -60,7 +60,7 @@ Three things ship as one project:
 - One database per project, at `<repo>/.writ/writ.db`.
 - Discovered by walking up from cwd, like git finds `.git`. The CLI, the MCP server, and the Electron "open project" flow all use the same `findProjectRoot(cwd)` helper.
 - SQLite is opened in WAL mode so multiple processes (CLI, MCP, Electron) can read and write concurrently without external coordination.
-- **Planned:** a user-level registry at `~/.config/writ/registry.json` will list project paths the desktop app aggregates over, and the CLI will auto-register a project on first successful write so the UI just sees it. Until then, the desktop app opens whatever project lives at the cwd it was launched from.
+- **No global registry.** Each writ-aware process — CLI, MCP, desktop window — sees exactly one project, the one its cwd resolves to. The desktop app additionally accepts an explicit "open this folder" via a native file dialog, but that's a per-window choice driven by the user, not a persistent enumeration. See the [decision log](#no-cross-project-visibility--cwd-is-the-boundary).
 - WAL sidecars (`writ.db-wal`, `writ.db-shm`) are deleted by SQLite only when the **last** open connection closes. With CLI/MCP/app potentially holding the file concurrently, expect sidecars to linger during dev. This is normal. If we ever want a self-contained `.writ/writ.db` for export/commit, run `PRAGMA wal_checkpoint(TRUNCATE)` and close all our connections — third-party tools holding the file open will still keep the sidecars alive until they release.
 
 Rationale: the user's mental model is TODO.md-per-repo. Files travel with the code; users decide per-repo whether to gitignore `.writ/` or commit it.
@@ -72,21 +72,21 @@ Rationale: the user's mental model is TODO.md-per-repo. Files travel with the co
 - Works without the desktop app running (CI, SSH, headless agents).
 - SQLite WAL handles concurrent writes from multiple sessions safely; "the shared instance" is the file, not a server.
 - Cwd is inherited from the spawning client, so project discovery is free.
-- After every successful write, the CLI/MCP fires a best-effort notification at `~/.config/writ/app.sock` (Unix socket; named pipe on Windows at `\\.\pipe\writ-app`). If the desktop app is listening, it broadcasts a `project:changed` IPC event to its renderer windows and the open UI refreshes immediately. If not, no-op. The ping socket is `unref`d in the writer process so a pending connect never delays CLI exit.
+- After every successful write, the CLI/MCP fires a best-effort notification at `~/.config/writ/app.sock` (Unix socket; named pipe on Windows at `\\.\pipe\writ-app`). The wire format is line-delimited JSON with a discriminator: `{"type": "changed", "root": "<path>"}` for write-notifications, `{"type": "open", "root": "<path>" | null}` for the bare-`writ` launch flow (focus the existing window and switch projects if the cwd differs; null means "focus only, don't change the open project"). If the desktop app is listening, it dispatches accordingly — `changed` broadcasts `project:changed` to the renderer; `open` switches and broadcasts. If no listener, no-op. The socket is `unref`d in the writer process so a pending connect never delays CLI exit.
 - The desktop app also watches each open DB's `.writ/` directory with `fs.watch` (filtered to `writ.db` / `writ.db-wal`, debounced ~150ms) so correctness never depends on the ping arriving — third-party writes and lost pings still surface in the UI. Renderer-initiated IPC writes set a ~250ms suppression window so the watcher event our own write trips doesn't trigger a redundant refetch on top of optimistic state.
 
 This is the only architectural choice that took real debate; see [Decision log](#decision-log).
 
 ### Two binaries, one user-facing name
 
-The `writ` command users type is a thin Node CLI script. It is _not_ the Electron binary.
+The `writ` command users type is a thin shell launcher. It is _not_ the Electron binary directly — it's a script that decides whether to invoke Electron as Node or as a GUI.
 
-- For `init`/`task`/`mcp` subcommands: handle in-process with fast Node startup. Today via `bin/writ-dev`, which runs under Electron-as-Node.
-- **Planned:** for `writ` with no subcommand: spawn the Electron app, detaching, and exit. If an instance is already running, send "focus on this project" via the same socket and exit.
+- For `init` / `task` / `project` / `mcp` / `completion` subcommands: the launcher invokes `ELECTRON_RUN_AS_NODE=1 <electron-bin> <cli-bundle.js> "$@"`. The bundled CLI (`out/cli/index.js`, built by `build/vite.cli.config.ts`) handles dispatch via commander. Fast Node startup; no Chromium boot.
+- For bare `writ` (no subcommand): the same path through the bundled CLI, which then calls `launchDesktop()`. That helper first tries to send `{"type": "open", "root": <cwd>}` over the desktop socket — if a window is open, it focuses and (if cwd differs) switches projects. On socket failure, it spawns the Electron binary detached (no `ELECTRON_RUN_AS_NODE`) so the parent CLI can exit immediately.
+
+In the pacman-packaged build: the launcher is `/opt/writ/bin/writ` (a shell script shipped via electron-builder's `extraFiles`); the install hook symlinks `/usr/bin/writ → /opt/writ/bin/writ`. In dev: `bin/writ-dev` is the equivalent, running the CLI from source via tsx. Both paths end up at the same dispatch.
 
 The Electron binary is an implementation detail; users don't invoke it directly. (How `code` works.)
-
-This costs us a small launcher script in distribution (electron-builder writes it on install) but it's the only way to keep `writ task add` from paying Chromium boot cost.
 
 ## Stack
 
@@ -95,7 +95,7 @@ This costs us a small launcher script in distribution (electron-builder writes i
 - Data: SQLite via `better-sqlite3` (synchronous, fast, perfect for a desktop app's main process and a CLI).
 - MCP: `@modelcontextprotocol/sdk` over stdio.
 - CLI parser: `commander`.
-- Packaging: electron-builder (already configured) for the desktop app. **Planned:** ship the CLI as a separate `tsup`/`vite`/`esbuild` bundle into `dist/cli/index.js` plus a launcher shim on `$PATH`. Today the CLI runs from source via `bin/writ-dev` under Electron-as-Node.
+- Packaging: electron-builder + fpm. The pacman target is shipped (Linux on Arch); the GitHub Releases workflow, AUR submission, and other Linux formats (AppImage / snap / deb) plus macOS / Windows are tracked as follow-up tasks. The CLI is bundled into `out/cli/index.js` via a sibling Vite config (`build/vite.cli.config.ts`) and shipped inside the asar; the launcher shell script (`build/writ-launcher.sh`) lands at `<install-dir>/bin/writ` via electron-builder's `extraFiles`.
 
 The current CLI and MCP surfaces are the live source of truth — see the [README](./README.md), `writ --help`, and the registered `mcp__writ__*` tools rather than restating them here. Active work is tracked in writ itself (`mcp__writ__list_tasks`).
 
@@ -122,6 +122,7 @@ CREATE TABLE tasks (
   description  TEXT NOT NULL DEFAULT '',  -- markdown
   priority     INTEGER NOT NULL DEFAULT 2,-- 0=urgent, 1=high, 2=normal, 3=low
   position     REAL NOT NULL,             -- order within the column
+  version      INTEGER NOT NULL DEFAULT 0,-- OCC; bumped on every successful updateTask (v5)
   created_at   INTEGER NOT NULL,
   updated_at   INTEGER NOT NULL
 );
@@ -171,6 +172,14 @@ Considered:
 ### Per-project DB rather than global workspace
 
 A global SQLite at `~/.config/writ/writ.db` was simpler to implement (one connection, one schema, no aggregation) but lost the "lives with the code" property the user wanted. Reversed.
+
+### No cross-project visibility — cwd is the boundary
+
+Considered: a per-user registry at `~/.config/writ/registry.json` listing every project the user has touched, populated automatically on first write. The desktop UI would show recents and an aggregated "all projects" view; MCP would expose `set_project` / `list_projects` tools so an agent could enumerate or switch projects mid-session.
+
+Rejected. An agent running inside project A should not be able to read or enumerate tasks from project B without explicit consent — the cwd that spawned the MCP server is that consent. A registry-backed `set_project` weakens the boundary in a way `fs.watch`-style filesystem access can't equally reach (the registry is a curated index of "interesting" projects, easier to crawl than `find ~ -name .writ`).
+
+Cost paid: opening a different project from inside the running desktop app goes through a native folder picker (a one-time per-project click) rather than a recents list. A desktop-only recents file (kept in `app.getPath('userData')`, never read by CLI / MCP) can close that UX gap without exposing cross-project state to agents; tracked as a low-priority follow-up.
 
 ### Two binaries, one user name
 
