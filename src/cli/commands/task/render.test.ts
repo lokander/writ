@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import type { Column, Task } from "../../shared/types";
+import type { Column, Task } from "../../../shared/types";
 
-import { renderTaskView } from "./task";
+import { renderTaskView } from "./render";
 
 function makeTask(overrides: Partial<Task> = {}): Task {
   return {
