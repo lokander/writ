@@ -186,9 +186,11 @@ Three writers (CLI, MCP, desktop) share a single SQLite. To keep "user opened a 
 
 Layer-specific contracts:
 
-- **IPC** (`tasks:update`): returns `{ task, conflict? }`. The renderer's modal will diff against `conflict.current` for slice 3; today it just refreshes the local copy.
+- **IPC** (`tasks:update`): returns `{ task, conflict? }`. The renderer pipes `conflict.current` into a per-field conflict dialog; non-overlapping local-dirty / remote-changed sets auto-merge silently (re-pin and retry once).
 - **MCP** (`update_task`, `move_task`): exposes `expected_version`. When the agent pins, a stale read becomes a tool error. When the agent doesn't pin, the server still pins internally and retries once with the refreshed version — without the internal pin, an unpinned write would silently overwrite a concurrent change.
 - **CLI** (`writ task edit`): the editor mode pins to the version observed at editor-open and prints the now-current task as YAML on conflict so the user can re-run with the new state. Direct-flag mode (`--tag`, `--depends-on`) stays last-writer-wins — no read-edit-save gap to protect.
+
+The renderer's modal computes "dirty" against a snapshot captured at edit-start, not against the live row, so a remote edit to an untouched field doesn't get reflected as a local edit and clobbered on save. The diff/merge logic lives in pure helpers (`src/renderer/src/lib/diff-task.ts`) so the field-by-field decisions are unit-testable independently of the Svelte component.
 
 ## Implementation patterns
 

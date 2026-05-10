@@ -9,13 +9,21 @@
     WarningIcon,
   } from "phosphor-svelte";
 
-  import type { Priority, Task } from "../../../shared/types";
+  import type { Priority, Task, TaskUpdate } from "../../../shared/types";
   import { PRIORITY_NAMES } from "../../../shared/types";
   import { writState } from "./state.svelte";
-  import { buildTaskUpdate, diffTask } from "./diff-task";
+  import {
+    buildResolvedUpdate,
+    buildTaskUpdate,
+    type ConflictResolutions,
+    diffTask,
+    intersectFlags,
+    taskToFields,
+  } from "./diff-task";
   import { indexTags } from "./tag-color";
   import { renderMarkdown } from "./markdown";
   import ConfirmDialog from "./ConfirmDialog.svelte";
+  import ConflictDialog from "./ConflictDialog.svelte";
   import DependsOnPicker from "./DependsOnPicker.svelte";
   import ParentPicker from "./ParentPicker.svelte";
   import TagChip from "./TagChip.svelte";
@@ -78,6 +86,16 @@
   let tagSpecs = $state<string[]>(untrack(() => [...task.tags]));
   let dependsOnIds = $state<string[]>(untrack(() => [...task.dependsOn]));
 
+  // Snapshot of the task at the moment the user enters edit mode. Used as
+  // the diff baseline so "dirty" means "the user typed something different
+  // from what was there at edit-start", *not* "the form differs from the
+  // current live row". The distinction matters when a remote writer changes
+  // a field while the user is editing: without this snapshot, the modal
+  // would re-flag the externally-changed field as dirty and clobber it on
+  // save. We also pin `expectedVersion` to this snapshot's version so the
+  // OCC layer detects any race that landed between mount and save.
+  let originalTask = $state<Task>(untrack(() => $state.snapshot(task)));
+
   let saving = $state(false);
   let addingSubtask = $state(false);
   let newSubtaskTitle = $state("");
@@ -85,12 +103,12 @@
   // Per-field dirty flags. The IPC payload at save() narrows to only fields
   // that are dirty so an external writer's concurrent edit to (say) the
   // description isn't clobbered by our stale snapshot when the user only
-  // touched the title. The flag-by-field shape is also what makes slice 3's
-  // auto-merge feasible: when local-dirty and remote-changed sets don't
+  // touched the title. The flag-by-field shape is also what makes the
+  // OCC auto-merge feasible: when local-dirty and remote-changed sets don't
   // intersect, the conflict resolves silently. Logic lives in `diff-task.ts`
   // (unit-tested) — the component just wraps it in a $derived for reactivity.
   const dirtyFlags = $derived(
-    diffTask(task, {
+    diffTask(originalTask, {
       title,
       description,
       priority,
@@ -137,6 +155,11 @@
   const colorByTag = $derived(indexTags(writState.tags));
 
   function enterEdit(): void {
+    // Capture a fresh original AT edit-start. Re-entering edit after a
+    // remote update should treat the current state as the new baseline —
+    // otherwise dirty-tracking would compare against a stale snapshot from
+    // the previous edit session.
+    originalTask = $state.snapshot(task);
     title = task.title;
     description = task.description;
     priority = task.priority;
@@ -177,20 +200,100 @@
     pendingDiscardAction = null;
   }
 
+  // Conflict state. When `tasks:update` returns `{ kind: "conflict" }`,
+  // we either auto-merge (no overlap between dirty and remote-changed) or
+  // store the remote view in `pendingConflict` to render the dialog. The
+  // dialog's per-field picks come back through `applyResolutions`.
+  let pendingConflict = $state<Task | null>(null);
+
+  // Edited fields snapshot — what the user has typed. Wrapped in $derived
+  // so the conflict dialog reads coherent values, not reactively-rebuilt
+  // ones mid-render. Order has to match `EditedTaskFields`.
+  const editedFields = $derived({
+    title,
+    description,
+    priority,
+    parentId,
+    tagSpecs,
+    dependsOnIds,
+  });
+
+  // Conflict overlap = which fields are dirty AND changed remotely. Drives
+  // the auto-merge fast path (any === false → no dialog) and the dialog's
+  // per-field rows.
+  const conflictFlags = $derived(
+    pendingConflict
+      ? intersectFlags(dirtyFlags, diffTask(originalTask, taskToFields(pendingConflict)))
+      : null,
+  );
+
   async function save(): Promise<void> {
     if (!canSave) return;
     saving = true;
-    const update = buildTaskUpdate(task, {
-      title,
-      description,
-      priority,
-      parentId,
-      tagSpecs,
-      dependsOnIds,
-    });
-    const updated = await writState.updateTask(task.id, update);
+    const update = buildTaskUpdate(originalTask, editedFields);
+    await trySave(update, originalTask.version, /* allowAutoMerge */ true);
+  }
+
+  /** Single attempt against the IPC. Handles three outcomes:
+   *   - ok: exit edit mode, done.
+   *   - missing: task vanished — leave the modal as-is so the user notices
+   *     (the "Deleted by another writer" banner takes over via taskGone).
+   *   - conflict: branch on overlap. If `allowAutoMerge` is true and there's
+   *     no overlap, retry once with the same payload pinned to the new
+   *     version. Otherwise open the dialog.
+   *
+   *  Recursion is bounded: auto-merge retries once with `allowAutoMerge =
+   *  false`, after which a second conflict opens the dialog regardless. */
+  async function trySave(
+    update: TaskUpdate,
+    expectedVersion: number,
+    allowAutoMerge: boolean,
+  ): Promise<void> {
+    const outcome = await writState.updateTask(task.id, { ...update, expectedVersion });
+    if (outcome.kind === "ok") {
+      saving = false;
+      mode = "view";
+      return;
+    }
+    if (outcome.kind === "missing") {
+      saving = false;
+      return;
+    }
+    // conflict
+    const remote = diffTask(originalTask, taskToFields(outcome.current));
+    const overlap = intersectFlags(dirtyFlags, remote);
+    if (allowAutoMerge && !overlap.any) {
+      // Re-pin to the new version and retry. The payload is the same set
+      // of dirty-only fields; theirs in the DB stays for non-overlapping
+      // fields because we never include them.
+      await trySave(update, outcome.current.version, false);
+      return;
+    }
     saving = false;
-    if (updated) mode = "view";
+    pendingConflict = outcome.current;
+  }
+
+  function applyResolutions(resolutions: ConflictResolutions): void {
+    const remote = pendingConflict;
+    if (!remote) return;
+    pendingConflict = null;
+    saving = true;
+    const update = buildResolvedUpdate(originalTask, editedFields, remote, resolutions);
+    if (Object.keys(update).length === 0) {
+      // User accepted theirs on every conflicting field and had no
+      // non-conflicting dirty edits to send. Nothing to write — just exit
+      // edit mode; the local copy of the task is already the remote view
+      // (writState updated it when we hit the conflict).
+      saving = false;
+      mode = "view";
+      return;
+    }
+    void trySave(update, remote.version, false);
+  }
+
+  function cancelConflict(): void {
+    pendingConflict = null;
+    saving = false;
   }
 
   async function performDelete(): Promise<void> {
@@ -550,5 +653,16 @@
     variant="danger"
     onConfirm={performDelete}
     onCancel={() => (confirmingDelete = false)}
+  />
+{/if}
+
+{#if pendingConflict && conflictFlags}
+  <ConflictDialog
+    {originalTask}
+    edited={editedFields}
+    remoteTask={pendingConflict}
+    {conflictFlags}
+    onResolve={applyResolutions}
+    onCancel={cancelConflict}
   />
 {/if}

@@ -1,5 +1,15 @@
 import type { Column, NewTask, ProjectInfo, Tag, Task, TaskUpdate } from "../../../shared/types";
 
+/** Outcome of a `tasks:update` round-trip. The modal needs to distinguish
+ *  "task vanished" from "your edit was based on stale state" so it can drive
+ *  the conflict dialog (slice 4). Other callers (drag-drop, context-menu
+ *  quick-edits) ignore the conflict path because they don't pin an
+ *  `expectedVersion` — the conflict case is unreachable for them. */
+export type UpdateOutcome =
+  | { kind: "ok"; task: Task }
+  | { kind: "missing" }
+  | { kind: "conflict"; current: Task };
+
 export class WritState {
   project = $state<ProjectInfo | null>(null);
   columns = $state<Column[]>([]);
@@ -84,27 +94,27 @@ export class WritState {
     }
   }
 
-  async updateTask(id: string, update: TaskUpdate): Promise<Task | null> {
+  async updateTask(id: string, update: TaskUpdate): Promise<UpdateOutcome> {
     try {
       const result = await window.api.tasks.update(id, $state.snapshot(update));
       if (result.conflict) {
         // Stale-read: a concurrent writer beat us. Refresh the local copy of
-        // that task with the now-current state so the UI shows fresh values
-        // immediately. The conflict modal (slice 3) will branch on this
-        // path; for now we surface the freshness in-place and don't write
-        // an error so unrelated tasks aren't disturbed.
+        // that task with the now-current state so the UI reflects the truth
+        // either way (the conflict dialog will let the user decide what to
+        // do); we don't set `error` because the failure isn't a system bug
+        // and the modal owns the retry flow.
         const current = result.conflict.current;
         this.tasks = this.tasks.map((t) => (t.id === id ? current : t));
-        return null;
+        return { kind: "conflict", current };
       }
       const updated = result.task;
-      if (!updated) return null;
+      if (!updated) return { kind: "missing" };
       this.tasks = this.tasks.map((t) => (t.id === id ? updated : t));
       if (update.tags !== undefined) await this.refreshTags();
-      return updated;
+      return { kind: "ok", task: updated };
     } catch (e) {
       this.error = e instanceof Error ? e.message : String(e);
-      return null;
+      return { kind: "missing" };
     }
   }
 

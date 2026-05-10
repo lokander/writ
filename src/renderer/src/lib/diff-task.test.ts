@@ -2,7 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import type { Task } from "../../../shared/types";
 
-import { buildTaskUpdate, diffTask, type EditedTaskFields } from "./diff-task";
+import {
+  buildResolvedUpdate,
+  buildTaskUpdate,
+  type ConflictResolutions,
+  diffTask,
+  type EditedTaskFields,
+  intersectFlags,
+  taskToFields,
+} from "./diff-task";
 
 function makeTask(overrides: Partial<Task> = {}): Task {
   return {
@@ -143,5 +151,144 @@ describe("buildTaskUpdate", () => {
     expect("description" in update).toBe(false);
     expect("tags" in update).toBe(false);
     expect("dependsOn" in update).toBe(false);
+  });
+});
+
+describe("intersectFlags", () => {
+  const allFalse = {
+    title: false,
+    description: false,
+    priority: false,
+    parentId: false,
+    tags: false,
+    dependsOn: false,
+    any: false,
+  };
+
+  it("returns all-false when neither side has any dirty fields", () => {
+    expect(intersectFlags(allFalse, allFalse)).toEqual(allFalse);
+  });
+
+  it("returns the field set true on both sides only", () => {
+    const a = { ...allFalse, title: true, description: true, any: true };
+    const b = { ...allFalse, description: true, priority: true, any: true };
+    const out = intersectFlags(a, b);
+    expect(out.title).toBe(false);
+    expect(out.description).toBe(true);
+    expect(out.priority).toBe(false);
+    expect(out.any).toBe(true);
+  });
+
+  it("derives any=false when sides are dirty in disjoint fields (auto-merge case)", () => {
+    const a = { ...allFalse, title: true, any: true };
+    const b = { ...allFalse, description: true, any: true };
+    const out = intersectFlags(a, b);
+    expect(out.any).toBe(false);
+  });
+});
+
+describe("taskToFields", () => {
+  it("projects a Task down to the modal's editable shape", () => {
+    const task = makeTask();
+    expect(taskToFields(task)).toEqual({
+      title: task.title,
+      description: task.description,
+      priority: task.priority,
+      parentId: task.parentId,
+      tagSpecs: task.tags,
+      dependsOnIds: task.dependsOn,
+    });
+  });
+
+  it("copies arrays so the result can be mutated without touching the task", () => {
+    const task = makeTask({ tags: ["a"] });
+    const fields = taskToFields(task);
+    fields.tagSpecs.push("b");
+    expect(task.tags).toEqual(["a"]);
+  });
+});
+
+const ALL_THEIRS: ConflictResolutions = {
+  title: "theirs",
+  description: "theirs",
+  priority: "theirs",
+  parentId: "theirs",
+  tags: "theirs",
+  dependsOn: "theirs",
+};
+
+const ALL_MINE: ConflictResolutions = {
+  title: "mine",
+  description: "mine",
+  priority: "mine",
+  parentId: "mine",
+  tags: "mine",
+  dependsOn: "mine",
+};
+
+describe("buildResolvedUpdate", () => {
+  it("includes a dirty-only field even when resolutions point to theirs (no conflict on it)", () => {
+    // Local user changed the title; remote didn't touch it. resolutions are
+    // irrelevant here because this isn't a conflict — yours wins by default.
+    const original = makeTask({ title: "T", description: "D" });
+    const remote = makeTask({ title: "T", description: "D" });
+    const edited = makeEdited(original, { title: "Renamed" });
+    const update = buildResolvedUpdate(original, edited, remote, ALL_THEIRS);
+    expect(update).toEqual({ title: "Renamed" });
+  });
+
+  it("omits a remote-only field even when resolutions say mine (no conflict on it)", () => {
+    // Remote changed description; user didn't. resolutions don't apply
+    // because there's no overlap; theirs in the DB stays untouched.
+    const original = makeTask({ title: "T", description: "old" });
+    const remote = makeTask({ title: "T", description: "new from CLI" });
+    const edited = makeEdited(original);
+    const update = buildResolvedUpdate(original, edited, remote, ALL_MINE);
+    expect(update).toEqual({});
+  });
+
+  it("respects per-field resolution on a true conflict (both sides changed)", () => {
+    const original = makeTask({ title: "T", description: "D" });
+    const remote = makeTask({ title: "remote-rename", description: "remote-body" });
+    const edited = makeEdited(original, { title: "local-rename", description: "local-body" });
+    const keepMineTitle: ConflictResolutions = { ...ALL_THEIRS, title: "mine" };
+    const update = buildResolvedUpdate(original, edited, remote, keepMineTitle);
+    expect(update.title).toBe("local-rename");
+    expect("description" in update).toBe(false); // theirs stays in DB
+  });
+
+  it("force-save mine: every dirty field flows through with yours", () => {
+    const original = makeTask({ title: "T", description: "D" });
+    const remote = makeTask({ title: "remote", description: "remote" });
+    const edited = makeEdited(original, { title: "yours", description: "yours" });
+    const update = buildResolvedUpdate(original, edited, remote, ALL_MINE);
+    expect(update).toEqual({ title: "yours", description: "yours" });
+  });
+
+  it("accept all theirs: payload is empty when every dirty field also conflicts", () => {
+    const original = makeTask({ title: "T", description: "D" });
+    const remote = makeTask({ title: "remote", description: "remote" });
+    const edited = makeEdited(original, { title: "yours", description: "yours" });
+    const update = buildResolvedUpdate(original, edited, remote, ALL_THEIRS);
+    expect(update).toEqual({});
+  });
+
+  it("auto-merge: dirty + remote on disjoint fields → both contributions land", () => {
+    // User changed title; remote changed description. No conflict; payload
+    // contains the user's title only — remote's description survives in the
+    // DB because we don't include the description field at all.
+    const original = makeTask({ title: "T", description: "D" });
+    const remote = makeTask({ title: "T", description: "remote" });
+    const edited = makeEdited(original, { title: "yours" });
+    const update = buildResolvedUpdate(original, edited, remote, ALL_THEIRS);
+    expect(update).toEqual({ title: "yours" });
+  });
+
+  it("trims the title at the IPC boundary regardless of resolution", () => {
+    const original = makeTask({ title: "T" });
+    const remote = makeTask({ title: "T" });
+    const edited = makeEdited(original, { title: "  yours  " });
+    const update = buildResolvedUpdate(original, edited, remote, ALL_MINE);
+    expect(update.title).toBe("yours");
   });
 });

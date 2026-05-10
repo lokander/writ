@@ -67,3 +67,87 @@ function sameSet(a: string[], b: string[]): boolean {
   const bb = [...b].sort();
   return aa.every((v, i) => v === bb[i]);
 }
+
+/** Per-field user choice when both sides changed the same field. */
+export type Resolution = "mine" | "theirs";
+
+export interface ConflictResolutions {
+  title: Resolution;
+  description: Resolution;
+  priority: Resolution;
+  parentId: Resolution;
+  tags: Resolution;
+  dependsOn: Resolution;
+}
+
+/** Fields dirty on BOTH sides — i.e. true conflicts that need a user
+ *  decision. Returned with `any` so the modal can branch on "is there
+ *  anything to ask the user about?". */
+export function intersectFlags(a: TaskDirtyFlags, b: TaskDirtyFlags): TaskDirtyFlags {
+  const title = a.title && b.title;
+  const description = a.description && b.description;
+  const priority = a.priority && b.priority;
+  const parentId = a.parentId && b.parentId;
+  const tags = a.tags && b.tags;
+  const dependsOn = a.dependsOn && b.dependsOn;
+  return {
+    title,
+    description,
+    priority,
+    parentId,
+    tags,
+    dependsOn,
+    any: title || description || priority || parentId || tags || dependsOn,
+  };
+}
+
+/** Project a `Task` down to the fields the modal binds to. Used to compare
+ *  two Task snapshots (original vs server-current) through the same
+ *  `diffTask` machinery the modal already uses. */
+export function taskToFields(task: Task): EditedTaskFields {
+  return {
+    title: task.title,
+    description: task.description,
+    priority: task.priority,
+    parentId: task.parentId,
+    tagSpecs: [...task.tags],
+    dependsOnIds: [...task.dependsOn],
+  };
+}
+
+/** Build the final IPC payload after a conflict has been resolved.
+ *
+ *  For each field, four cases drive whether it lands in the payload:
+ *  - !dirty, !remoteChanged: nobody touched it, skip.
+ *  - dirty, !remoteChanged: my edit, no conflict — include yours.
+ *  - !dirty, remoteChanged: their edit, no conflict — skip so theirs stays.
+ *  - dirty AND remoteChanged: conflict — `resolutions[field]` decides.
+ *    `mine` includes yours; `theirs` skips (so their value stays in the DB).
+ *
+ *  The returned payload should be sent paired with `expectedVersion`
+ *  re-pinned to the conflict's `current.version` — that's the contract
+ *  the OCC retry expects. */
+export function buildResolvedUpdate(
+  originalTask: Task,
+  edited: EditedTaskFields,
+  remoteTask: Task,
+  resolutions: ConflictResolutions,
+): TaskUpdate {
+  const dirty = diffTask(originalTask, edited);
+  const remote = diffTask(originalTask, taskToFields(remoteTask));
+  const update: TaskUpdate = {};
+
+  function include(field: keyof ConflictResolutions): boolean {
+    if (!dirty[field]) return false;
+    if (!remote[field]) return true; // dirty-only → mine
+    return resolutions[field] === "mine"; // conflict → user's pick
+  }
+
+  if (include("title")) update.title = edited.title.trim();
+  if (include("description")) update.description = edited.description;
+  if (include("priority")) update.priority = edited.priority;
+  if (include("parentId")) update.parentId = edited.parentId;
+  if (include("tags")) update.tags = edited.tagSpecs;
+  if (include("dependsOn")) update.dependsOn = edited.dependsOnIds;
+  return update;
+}
