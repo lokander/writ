@@ -73,6 +73,19 @@
     filterTags.length > 0 || filterPriorities.length > 0 || stateFilter !== "any",
   );
 
+  function clearFilters(): void {
+    filterTags = [];
+    filterPriorities = [];
+    tagMode = "all";
+    stateFilter = "any";
+  }
+
+  function onViewChange(v: View): void {
+    if (v === view) return;
+    view = v;
+    clearFilters();
+  }
+
   // The modal owns its own "task disappeared" handling — it can decide
   // whether to silently close (view mode / no unsaved edits) or stay open
   // with a "deleted by another writer" banner so the user doesn't lose
@@ -314,6 +327,7 @@
   // success, main has swapped currentProject; we refetch so the UI redraws.
   async function openProjectFolder(): Promise<void> {
     try {
+      const previousRoot = writState.project?.root ?? null;
       const result = await window.api.project.openFolder();
       if ("canceled" in result) return;
       if ("error" in result) {
@@ -327,6 +341,13 @@
         return;
       }
       await writState.loadAll();
+      // Tag chips and tag-mode/state filters from the old project usually
+      // don't carry meaning in the new one (different tag names, different
+      // task pool). Reset so the user starts the new project unfiltered.
+      const currentRoot = writState.project?.root ?? null;
+      if (previousRoot !== null && currentRoot !== null && currentRoot !== previousRoot) {
+        clearFilters();
+      }
     } catch (e) {
       // Unexpected IPC failure during folder-pick — surface transiently;
       // the app state hasn't necessarily changed.
@@ -336,7 +357,12 @@
 </script>
 
 <main class="flex h-full flex-col bg-base-100 text-base-content">
-  <AppBar bind:view onOpenProject={openProjectFolder} onNewTask={() => (showAddModal = true)} />
+  <AppBar
+    {view}
+    {onViewChange}
+    onOpenProject={openProjectFolder}
+    onNewTask={() => (showAddModal = true)}
+  />
 
   {#if writState.loading || !writState.project}
     <EmptyState onOpenProject={openProjectFolder} />

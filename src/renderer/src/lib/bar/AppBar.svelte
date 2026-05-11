@@ -10,11 +10,12 @@
 
   interface Props {
     view: View;
+    onViewChange: (v: View) => void;
     onOpenProject: () => void;
     onNewTask: () => void;
   }
 
-  let { view = $bindable(), onOpenProject, onNewTask }: Props = $props();
+  let { view, onViewChange, onOpenProject, onNewTask }: Props = $props();
 
   // Rename state is purely local to the project-name affordance — no other
   // chrome cares whether the user is mid-edit, so it lives here rather than
@@ -103,7 +104,7 @@
             type="button"
             class="btn btn-primary btn-xs join-item w-24"
             class:btn-soft={view !== v}
-            onclick={() => (view = v)}
+            onclick={() => onViewChange(v)}
           >
             {#if v === "list"}
               <ListIcon size={14} weight="bold" />
