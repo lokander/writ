@@ -156,7 +156,7 @@
            takes on a primary tint only when a non-default sort is active. -->
       <div
         class={[
-          "flex h-[1.5rem] items-center rounded-field text-xs",
+          "flex h-6 items-center rounded-field text-xs",
           sortMode === "position" ? "bg-base-300" : "bg-primary/15 text-primary",
         ]}
       >
@@ -165,7 +165,7 @@
             type="button"
             tabindex="0"
             class={[
-              "flex h-[1.5rem] items-center gap-1 rounded-l-field px-2 hover:bg-base-content/10",
+              "flex h-6 items-center gap-1 rounded-l-field px-2 hover:bg-base-content/10",
               sortMode === "position" && "rounded-r-field",
             ]}
             title="Sort cards by…"
@@ -201,7 +201,7 @@
         {#if sortMode !== "position"}
           <button
             type="button"
-            class="flex h-[1.5rem] items-center rounded-r-field px-1.5 hover:bg-base-content/10"
+            class="flex h-6 items-center rounded-r-field px-1.5 hover:bg-base-content/10"
             title="Clear sort (return to default)"
             aria-label="Clear sort"
             onclick={() => onSortChange("position")}
