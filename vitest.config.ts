@@ -24,6 +24,11 @@ import { defineConfig } from "vitest/config";
 // for the renderer tests; node-env tests don't load it.
 export default defineConfig({
   plugins: [svelte({ hot: false })],
+  // Resolve the svelte package's "browser" export condition (its client
+  // runtime) — otherwise vitest picks up "node" and mount() lands on the
+  // server build, which throws lifecycle_function_unavailable when a
+  // component tries to mount in a happy-dom test.
+  resolve: { conditions: ["browser"] },
   test: {
     testTimeout: 15000,
     maxWorkers: 4,
