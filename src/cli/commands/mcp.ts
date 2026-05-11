@@ -4,6 +4,7 @@ import { Command } from "commander";
 
 import { runMcpServer } from "../../mcp/server";
 import { findProjectRoot } from "../../shared/domain/project";
+import { confirmYesNo } from "../confirm";
 import { handleCliError } from "../context";
 
 const MCP_CONFIG_FILE = ".mcp.json";
@@ -28,6 +29,7 @@ interface McpConfig {
 interface InstallOptions {
   command?: string;
   yes?: boolean;
+  dryRun?: boolean;
 }
 
 export function mcpCommand(): Command {
@@ -45,10 +47,11 @@ export function mcpCommand(): Command {
       "--command <path>",
       `Command for the MCP entry (default: '${DEFAULT_COMMAND}', expecting it on PATH)`,
     )
-    .option("-y, --yes", "Overwrite an existing differing 'writ' entry without prompting")
-    .action((opts: InstallOptions) => {
+    .option("-y, --yes", "Skip the confirmation prompt when overwriting an existing entry")
+    .option("--dry-run", "Print what would be written to .mcp.json without modifying it")
+    .action(async (opts: InstallOptions) => {
       const root = resolveRoot();
-      runInstall(root, opts);
+      await runInstall(root, opts);
     });
 
   cmd
@@ -70,7 +73,7 @@ function resolveRoot(): string {
   return root;
 }
 
-function runInstall(root: string, opts: InstallOptions): void {
+async function runInstall(root: string, opts: InstallOptions): Promise<void> {
   const command = (opts.command ?? DEFAULT_COMMAND).trim();
   if (command.length === 0) {
     handleCliError(new Error("--command cannot be empty"));
@@ -86,26 +89,44 @@ function runInstall(root: string, opts: InstallOptions): void {
     return;
   }
 
-  if (existing && !opts.yes) {
-    process.stderr.write(
-      `${MCP_CONFIG_FILE} already has a 'writ' entry with different fields.\n\n`,
-    );
-    process.stderr.write(`  Current command: ${existing.command}\n`);
-    process.stderr.write(`  Current args:    ${JSON.stringify(existing.args ?? [])}\n\n`);
-    process.stderr.write(`  New command:     ${command}\n`);
-    process.stderr.write(`  New args:        ${JSON.stringify(SERVER_ARGS)}\n\n`);
-    process.stderr.write(
-      `Re-run with --yes to overwrite (other fields like env are preserved),\nor 'writ mcp uninstall' first.\n`,
-    );
-    process.exit(1);
-  }
-
-  // Merge so we replace command/args but keep any user-added fields (env, type, etc).
-  config.mcpServers![SERVER_NAME] = {
+  // Build the merged entry up-front so both the dry-run preview and the
+  // confirm prompt show exactly what would land. Other fields (env, type,
+  // user-added cwd …) flow through unchanged on update.
+  const nextEntry: McpServerEntry = {
     ...(existing ?? {}),
     command,
     args: [...SERVER_ARGS],
   };
+
+  if (opts.dryRun) {
+    console.log(`Would write to ${path}:`);
+    console.log("");
+    console.log(
+      JSON.stringify(
+        { ...config, mcpServers: { ...config.mcpServers, [SERVER_NAME]: nextEntry } },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+
+  if (existing && !opts.yes) {
+    process.stdout.write(
+      `${MCP_CONFIG_FILE} already has a 'writ' entry with different fields.\n\n`,
+    );
+    process.stdout.write(`  Current command: ${existing.command}\n`);
+    process.stdout.write(`  Current args:    ${JSON.stringify(existing.args ?? [])}\n\n`);
+    process.stdout.write(`  New command:     ${command}\n`);
+    process.stdout.write(`  New args:        ${JSON.stringify(SERVER_ARGS)}\n\n`);
+    const ok = await confirmYesNo("Overwrite? (other fields like env are preserved)");
+    if (!ok) {
+      console.log("Aborted.");
+      return;
+    }
+  }
+
+  config.mcpServers![SERVER_NAME] = nextEntry;
   writeJson(path, config);
 
   if (existing) {

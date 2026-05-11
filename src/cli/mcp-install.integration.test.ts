@@ -83,7 +83,7 @@ describe.concurrent("writ mcp install / uninstall", () => {
       expect(after).toBe(before);
     }));
 
-  it("refuses to overwrite a differing 'writ' entry without --yes", () =>
+  it("refuses to overwrite a differing 'writ' entry on non-TTY without --yes", () =>
     withProject(async (dir) => {
       await init(dir);
       writeFileSync(
@@ -100,12 +100,45 @@ describe.concurrent("writ mcp install / uninstall", () => {
         "utf8",
       );
 
+      // No --yes, non-TTY (subprocess pipe) — the prompt path bails with
+      // a helpful error instead of hanging on stdin.
       const r = await runWrit(dir, ["mcp", "install", "--command", ORPHAN_CMD]);
       expect(r.exitCode).toBe(1);
-      expect(r.stderr).toMatch(/already has a 'writ' entry/);
-      expect(r.stderr).toMatch(/Re-run with --yes/);
+      // The "already has a 'writ' entry" preamble lands on stdout before
+      // the prompt; the TTY-refusal lands on stderr.
+      expect(r.stdout).toMatch(/already has a 'writ' entry/);
+      expect(r.stderr).toMatch(/--yes/);
 
       // Original entry should be untouched.
+      const cfg = readMcp(dir);
+      expect(cfg.mcpServers?.writ?.command).toBe("./bin/writ-dev");
+    }));
+
+  it("--dry-run prints the would-be config without writing", () =>
+    withProject(async (dir) => {
+      await init(dir);
+      writeFileSync(
+        join(dir, ".mcp.json"),
+        JSON.stringify(
+          {
+            mcpServers: {
+              writ: { command: "./bin/writ-dev", args: ["mcp"], env: { DEBUG: "1" } },
+            },
+          },
+          null,
+          2,
+        ),
+        "utf8",
+      );
+
+      const r = await runWrit(dir, ["mcp", "install", "--command", ORPHAN_CMD, "--dry-run"]);
+      expect(r.exitCode).toBe(0);
+      expect(r.stdout).toMatch(/Would write to/);
+      // The preview shows the merged entry: new command, original env.
+      expect(r.stdout).toContain(ORPHAN_CMD);
+      expect(r.stdout).toContain('"DEBUG"');
+
+      // File should be unchanged.
       const cfg = readMcp(dir);
       expect(cfg.mcpServers?.writ?.command).toBe("./bin/writ-dev");
     }));

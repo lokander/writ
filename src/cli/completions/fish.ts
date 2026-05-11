@@ -89,6 +89,11 @@ complete -c writ -n "__writ_using_nested task add"      -l depends-on  -d "Block
 complete -c writ -n "__writ_using_nested task edit" -l tag        -d "Replace the tag set (repeatable)" -r
 complete -c writ -n "__writ_using_nested task edit" -l depends-on -d "Replace the dependency set (repeatable)" -r
 
+# task remove flags
+for sub in remove rm
+    complete -c writ -n "__writ_using_nested task $sub" -s y -l yes -d "Skip the confirmation prompt"
+end
+
 # tags subcommands
 set -l tags_subs list ls remove rm rename color prune
 complete -c writ -n "__writ_using tags; and not __fish_seen_subcommand_from $tags_subs" -a list   -d "List every tag with its color"
@@ -121,7 +126,8 @@ set -l mcp_subs install uninstall
 complete -c writ -n "__writ_using mcp; and not __fish_seen_subcommand_from $mcp_subs" -a install   -d "Add writ to the project .mcp.json"
 complete -c writ -n "__writ_using mcp; and not __fish_seen_subcommand_from $mcp_subs" -a uninstall -d "Remove the writ entry from .mcp.json"
 complete -c writ -n "__writ_using_nested mcp install" -l command -d "Override the MCP command path" -r
-complete -c writ -n "__writ_using_nested mcp install" -s y -l yes -d "Overwrite an existing entry without prompting"
+complete -c writ -n "__writ_using_nested mcp install" -s y -l yes -d "Skip the overwrite confirmation prompt"
+complete -c writ -n "__writ_using_nested mcp install" -l dry-run -d "Print what would be written without modifying .mcp.json"
 
 # completion arg
 complete -c writ -n "__writ_using completion" -a "bash zsh fish"

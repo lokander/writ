@@ -1,7 +1,7 @@
 import type { Command } from "commander";
 
 import { deleteTag } from "../../../shared/domain/tags";
-import { confirmOrExit } from "../../confirm";
+import { confirmYesNo } from "../../confirm";
 import { handleCliError, withProjectDb } from "../../context";
 
 interface RemoveOptions {
@@ -16,7 +16,7 @@ export function removeCommand(parent: Command): void {
     .option("-y, --yes", "Skip the confirmation prompt")
     .action(async (name: string, opts: RemoveOptions) => {
       if (!opts.yes) {
-        const ok = await confirmOrExit(`Delete tag '${name}'?`);
+        const ok = await confirmYesNo(`Delete tag '${name}'?`);
         if (!ok) {
           console.log("Aborted.");
           return;

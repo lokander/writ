@@ -58,6 +58,9 @@ _writ_completions() {
                 edit)
                     COMPREPLY=( $(compgen -W "--tag --depends-on --help" -- "$cur") )
                     ;;
+                remove)
+                    COMPREPLY=( $(compgen -W "--yes --help" -- "$cur") )
+                    ;;
             esac
             ;;
         tags)
@@ -91,7 +94,7 @@ _writ_completions() {
             if [[ -z "$nested" ]]; then
                 COMPREPLY=( $(compgen -W "install uninstall" -- "$cur") )
             elif [[ "$nested" == "install" ]]; then
-                COMPREPLY=( $(compgen -W "--command --yes --help" -- "$cur") )
+                COMPREPLY=( $(compgen -W "--command --yes --dry-run --help" -- "$cur") )
             fi
             ;;
         completion)

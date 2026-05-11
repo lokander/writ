@@ -1,7 +1,7 @@
 import type { Command } from "commander";
 
 import { listTagsWithCounts, pruneOrphanTags } from "../../../shared/domain/tags";
-import { confirmOrExit } from "../../confirm";
+import { confirmYesNo } from "../../confirm";
 import { withProjectDb } from "../../context";
 
 interface PruneOptions {
@@ -40,7 +40,7 @@ export function pruneCommand(parent: Command): void {
         `Will prune ${candidates.length} tag${candidates.length === 1 ? "" : "s"}: ${candidates.join(", ")}`,
       );
       if (!opts.yes) {
-        const ok = await confirmOrExit("Proceed?");
+        const ok = await confirmYesNo("Proceed?");
         if (!ok) {
           console.log("Aborted.");
           return;

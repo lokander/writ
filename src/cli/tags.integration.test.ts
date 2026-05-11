@@ -122,7 +122,7 @@ describe.concurrent("writ tags", () => {
       const tmp = suffixFromCreated(
         (await runWrit(dir, ["task", "add", "tmp", "--tag", "orphan"])).stdout,
       );
-      await runWrit(dir, ["task", "rm", tmp]);
+      await runWrit(dir, ["task", "rm", tmp, "--yes"]);
 
       const preview = await runWrit(dir, ["tags", "prune", "--dry-run"]);
       expect(preview.exitCode).toBe(0);
@@ -141,7 +141,7 @@ describe.concurrent("writ tags", () => {
       const tmp = suffixFromCreated(
         (await runWrit(dir, ["task", "add", "tmp", "--tag", "orphan"])).stdout,
       );
-      await runWrit(dir, ["task", "rm", tmp]);
+      await runWrit(dir, ["task", "rm", tmp, "--yes"]);
 
       const prune = await runWrit(dir, ["tags", "prune", "--yes"]);
       expect(prune.exitCode).toBe(0);

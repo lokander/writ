@@ -89,6 +89,9 @@ _writ() {
                                         '*--tag[Replace the tag set (repeatable)]:tag:' \\
                                         '*--depends-on[Replace the dependency set (repeatable)]:id:'
                                     ;;
+                                remove|rm)
+                                    _arguments '(-y --yes)'{-y,--yes}'[Skip the confirmation prompt]'
+                                    ;;
                             esac
                             ;;
                     esac
@@ -136,7 +139,8 @@ _writ() {
                             if [[ $line[1] == install ]]; then
                                 _arguments \\
                                     '--command[Override the MCP command path]:command:' \\
-                                    '(-y --yes)'{-y,--yes}'[Overwrite an existing entry without prompting]'
+                                    '(-y --yes)'{-y,--yes}'[Skip the overwrite confirmation prompt]' \\
+                                    '--dry-run[Print what would be written without modifying .mcp.json]'
                             fi
                             ;;
                     esac

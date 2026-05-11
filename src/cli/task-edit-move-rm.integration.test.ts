@@ -141,7 +141,7 @@ describe.concurrent("writ task remove", () => {
         (await runWrit(dir, ["task", "add", "child-task", "--parent", parent])).stdout,
       );
 
-      const r = await runWrit(dir, ["task", "remove", parent]);
+      const r = await runWrit(dir, ["task", "remove", parent, "--yes"]);
       expect(r.exitCode).toBe(0);
 
       const view = await runWrit(dir, ["task", "view", parent]);
@@ -157,9 +157,18 @@ describe.concurrent("writ task remove", () => {
     withProject(async (dir) => {
       await init(dir);
       const id = suffixFromCreated((await runWrit(dir, ["task", "add", "via-rm"])).stdout);
-      const r = await runWrit(dir, ["task", "rm", id]);
+      const r = await runWrit(dir, ["task", "rm", id, "--yes"]);
       expect(r.exitCode).toBe(0);
       const view = await runWrit(dir, ["task", "view", id]);
       expect(view.exitCode).toBe(1);
+    }));
+
+  it("requires --yes on non-TTY (refuses to hang on a prompt no one can answer)", () =>
+    withProject(async (dir) => {
+      await init(dir);
+      const id = suffixFromCreated((await runWrit(dir, ["task", "add", "needs-prompt"])).stdout);
+      const r = await runWrit(dir, ["task", "rm", id]);
+      expect(r.exitCode).toBe(1);
+      expect(r.stderr).toMatch(/--yes/);
     }));
 });
