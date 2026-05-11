@@ -1,6 +1,12 @@
 import { ulid } from "ulid";
 import type { SqliteDb } from "../db";
 import type { NewTask, Priority, Task, TaskUpdate } from "../types";
+
+// Re-exported so the existing `import { sortTasks } from "../shared/domain"`
+// call sites in the CLI / MCP don't need to migrate; the function itself
+// lives in `shared/types/task` so the renderer (which can't depend on
+// `shared/domain` — that path imports better-sqlite3) can reach it too.
+export { sortTasks } from "../types/task";
 import { getFirstColumn, listColumns } from "./columns";
 import { listDependenciesByTaskIds, listDependencyIds, setDependencies } from "./dependencies";
 import { listTaskTagNames, listTaskTagsByTaskIds, setTaskTags } from "./tags";

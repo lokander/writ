@@ -2,15 +2,19 @@
   import { LockSimpleIcon } from "phosphor-svelte";
 
   import type { Column, Task } from "../../../../shared/types";
-  import { writState } from "../state.svelte";
   import { PRIORITY_BORDER_CLASS } from "../priority-color";
   import TagChip from "../chip/TagChip.svelte";
   import TaskIdChip from "../chip/TaskIdChip.svelte";
 
   interface Props {
     columns: Column[];
-    /** Post-filter task set. Used for tab counts and (in flat-render mode)
-     *  for the cards shown in the active column. */
+    /** Full (pre-filter) task set, already sorted by the active sort mode.
+     *  Drives both tab counts and the hierarchical no-filter render — we
+     *  read from this instead of `allTasks` directly so the sort
+     *  applies in list view too. */
+    allTasks: Task[];
+    /** Post-filter, post-sort task set. Used in flat-render mode (filters
+     *  active) for the cards shown in the active column. */
     visibleTasks: Task[];
     filtersActive: boolean;
     /** Bindable so the choice survives view toggles (App owns it). */
@@ -29,6 +33,7 @@
 
   let {
     columns,
+    allTasks,
     visibleTasks,
     filtersActive,
     activeColumnId = $bindable(),
@@ -49,7 +54,7 @@
     if (filtersActive) {
       for (const t of visibleTasks) counts[t.columnId] = (counts[t.columnId] ?? 0) + 1;
     } else {
-      for (const t of writState.tasks) {
+      for (const t of allTasks) {
         if (t.parentId !== null) continue;
         counts[t.columnId] = (counts[t.columnId] ?? 0) + 1;
       }
@@ -65,7 +70,7 @@
     if (filtersActive) {
       return visibleTasks.filter((t) => t.columnId === activeColumnId);
     }
-    return writState.tasks.filter((t) => t.parentId === null && t.columnId === activeColumnId);
+    return allTasks.filter((t) => t.parentId === null && t.columnId === activeColumnId);
   });
 </script>
 

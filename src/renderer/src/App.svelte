@@ -4,6 +4,7 @@
   import AddTaskModal from "./lib/modal/AddTaskModal.svelte";
   import AppBar, { VIEWS, type View } from "./lib/bar/AppBar.svelte";
   import FilterBar, { STATE_FILTERS, type StateFilter } from "./lib/bar/FilterBar.svelte";
+  import { SORT_MODES, sortTasks, type SortMode } from "../../shared/types";
   import ConfirmDialog from "./lib/modal/ConfirmDialog.svelte";
   import EmptyState from "./lib/view/EmptyState.svelte";
   import KanbanView from "./lib/view/KanbanView.svelte";
@@ -18,6 +19,7 @@
 
   const FILTER_STORAGE_KEY = "writ:filter";
   const VIEW_STORAGE_KEY = "writ:view";
+  const SORT_STORAGE_KEY = "writ:sort";
 
   let activeColumnId = $state<string | null>(null);
 
@@ -37,6 +39,8 @@
 
   let showAddModal = $state(false);
   let view = $state<View>("kanban");
+  let sortMode = $state<SortMode>("position");
+  const dragEnabled = $derived(sortMode === "position");
 
   // Right-click context menu. Holds the target task and the cursor position
   // captured at right-click time. Cleared on action / outside-click / Esc.
@@ -127,6 +131,15 @@
     }
   });
 
+  // And for the sort mode.
+  $effect(() => {
+    try {
+      localStorage.setItem(SORT_STORAGE_KEY, sortMode);
+    } catch {
+      // ignore
+    }
+  });
+
   function matchesFilters(task: Task): boolean {
     if (filterTags.length > 0) {
       // tagMode picks the combinator: "all" → every selected tag on the task
@@ -148,13 +161,17 @@
     return true;
   }
 
-  const visibleTasks = $derived(
-    filtersActive ? writState.tasks.filter(matchesFilters) : writState.tasks,
-  );
+  // Sort first so both the flat (kanban) and hierarchical (list) paths see
+  // siblings in the chosen order. childrenByParent is built from this same
+  // sorted array so children appear in priority/updated/created order under
+  // their parent without a second sort pass.
+  const sortedTasks = $derived(sortTasks(writState.tasks, sortMode));
+
+  const visibleTasks = $derived(filtersActive ? sortedTasks.filter(matchesFilters) : sortedTasks);
 
   const childrenByParent = $derived.by(() => {
     const map: Record<string, Task[]> = {};
-    for (const t of writState.tasks) {
+    for (const t of sortedTasks) {
       if (t.parentId === null) continue;
       (map[t.parentId] ??= []).push(t);
     }
@@ -244,6 +261,12 @@
     try {
       const v = localStorage.getItem(VIEW_STORAGE_KEY);
       if (v && (VIEWS as string[]).includes(v)) view = v as View;
+    } catch {
+      // ignore
+    }
+    try {
+      const s = localStorage.getItem(SORT_STORAGE_KEY);
+      if (s && (SORT_MODES as readonly string[]).includes(s)) sortMode = s as SortMode;
     } catch {
       // ignore
     }
@@ -360,6 +383,8 @@
   <AppBar
     {view}
     {onViewChange}
+    {sortMode}
+    onSortChange={(m) => (sortMode = m)}
     onOpenProject={openProjectFolder}
     onNewTask={() => (showAddModal = true)}
   />
@@ -386,6 +411,7 @@
         {visibleTasks}
         {colorByTag}
         {childCount}
+        {dragEnabled}
         onTaskClick={(id) => openTaskModal(id)}
         onTaskContextMenu={openContextMenu}
         contextMenuTaskId={contextMenuFor?.taskId ?? null}
@@ -393,6 +419,7 @@
     {:else}
       <ListView
         columns={writState.columns}
+        allTasks={sortedTasks}
         {visibleTasks}
         {filtersActive}
         bind:activeColumnId

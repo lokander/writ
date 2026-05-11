@@ -19,6 +19,10 @@
     /** Subtask count per task id — shown as a badge so the user can see at a
      *  glance which cards have children (visible only via the modal). */
     childCount: Record<string, number>;
+    /** False when a non-position sort is active. Disables card drag so the
+     *  user doesn't reorder `position` while looking at a different sort —
+     *  the move would be invisible until they switched sorts back. */
+    dragEnabled: boolean;
     onTaskClick: (id: string) => void;
     onTaskContextMenu: (id: string, event: MouseEvent) => void;
     /** Id of the task whose context menu is currently open, if any. The
@@ -32,6 +36,7 @@
     visibleTasks,
     colorByTag,
     childCount,
+    dragEnabled,
     onTaskClick,
     onTaskContextMenu,
     contextMenuTaskId,
@@ -175,6 +180,7 @@
             }}
             use:draggable={{
               data: { type: "card", taskId: task.id },
+              disabled: !dragEnabled,
               onDragStart: () => (draggingTaskId = task.id),
               onDrop: () => (draggingTaskId = null),
             }}

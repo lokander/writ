@@ -20,6 +20,11 @@ type DragData = Record<string, unknown>;
 
 export interface DraggableOptions {
   data: DragData;
+  /** When true, skips registering the element with Pragmatic so the user
+   *  can't initiate a drag at all. The kanban uses this when a non-position
+   *  sort mode is active — reordering would write to `position` while the
+   *  cards are arranged by some other key, which is confusing. */
+  disabled?: boolean;
   onDragStart?: () => void;
   onDrop?: () => void;
 }
@@ -29,17 +34,38 @@ export function draggable(
   opts: DraggableOptions,
 ): { update: (next: DraggableOptions) => void; destroy: () => void } {
   let current = opts;
-  const cleanup = pddDraggable({
-    element: node,
-    getInitialData: () => current.data,
-    onDragStart: () => current.onDragStart?.(),
-    onDrop: () => current.onDrop?.(),
-  });
+  let cleanup: (() => void) | null = null;
+
+  function attach(): void {
+    if (current.disabled) return;
+    cleanup = pddDraggable({
+      element: node,
+      getInitialData: () => current.data,
+      onDragStart: () => current.onDragStart?.(),
+      onDrop: () => current.onDrop?.(),
+    });
+  }
+  attach();
+
   return {
     update(next) {
+      const wasDisabled = current.disabled ?? false;
+      const isDisabled = next.disabled ?? false;
       current = next;
+      if (wasDisabled === isDisabled) return;
+      // Toggle attach/detach so Pragmatic stops listening when the mode
+      // flips to a non-position sort, and starts again when the user
+      // switches back without remounting the whole card.
+      if (isDisabled) {
+        cleanup?.();
+        cleanup = null;
+      } else {
+        attach();
+      }
     },
-    destroy: cleanup,
+    destroy() {
+      cleanup?.();
+    },
   };
 }
 

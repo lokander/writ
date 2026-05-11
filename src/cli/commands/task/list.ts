@@ -1,7 +1,7 @@
 import type { Command } from "commander";
 import { getColumnByName, listColumns } from "../../../shared/domain/columns";
-import { listTasks } from "../../../shared/domain/tasks";
-import type { Priority, Task } from "../../../shared/types";
+import { listTasks, sortTasks } from "../../../shared/domain/tasks";
+import { SORT_MODES, type Priority, type SortMode, type Task } from "../../../shared/types";
 import { withProjectDb } from "../../context";
 import { collectPriority, collectString } from "./options";
 import { availableColumns, formatTaskLine, priorityChip, tagChip } from "./render";
@@ -16,6 +16,12 @@ interface ListOptions {
   showArchived?: boolean;
   ready?: boolean;
   blocked?: boolean;
+  sort?: SortMode;
+}
+
+function parseSort(value: string): SortMode {
+  if ((SORT_MODES as readonly string[]).includes(value)) return value as SortMode;
+  throw new Error(`Invalid --sort value '${value}'. Pick one of: ${SORT_MODES.join(", ")}.`);
 }
 
 function buildChildrenByParent(tasks: Task[]): Map<string, Task[]> {
@@ -79,17 +85,26 @@ export function listCommand(parent: Command): void {
     .option("--show-archived", "Include the Archived column (hidden by default)")
     .option("--ready", "Only tasks whose blockers (if any) are all in Done or Archived")
     .option("--blocked", "Only tasks with at least one open blocker")
+    .option(
+      "--sort <mode>",
+      `Sort sibling tasks by: ${SORT_MODES.join(" | ")} (default: position)`,
+      parseSort,
+    )
     .action((opts: ListOptions) => {
       withProjectDb(({ db }) => {
         const columns = listColumns(db);
-        const allTasks = listTasks(db, {
-          tags: opts.tag,
-          anyTags: opts.anyTag,
-          priorities: opts.priority,
-          query: opts.grep,
-          ready: opts.ready,
-          blocked: opts.blocked,
-        });
+        const sortMode: SortMode = opts.sort ?? "position";
+        const allTasks = sortTasks(
+          listTasks(db, {
+            tags: opts.tag,
+            anyTags: opts.anyTag,
+            priorities: opts.priority,
+            query: opts.grep,
+            ready: opts.ready,
+            blocked: opts.blocked,
+          }),
+          sortMode,
+        );
 
         if (allTasks.length === 0) {
           console.log('No tasks. Use `writ task add "title"` to create one.');

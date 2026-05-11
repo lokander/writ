@@ -17,11 +17,18 @@ import {
   deleteTask,
   listTasks,
   resolveTaskId,
+  sortTasks,
   StaleReadError,
   updateTask,
   type ListFilter,
 } from "../shared/domain/tasks";
-import { PRIORITY_NAMES, type Priority, type Task } from "../shared/types";
+import {
+  PRIORITY_NAMES,
+  SORT_MODES,
+  type Priority,
+  type SortMode,
+  type Task,
+} from "../shared/types";
 
 const PriorityInput = z.enum(["urgent", "high", "normal", "low", "u", "h", "n", "l"]);
 const PRIORITY_MAP: Record<string, Priority> = {
@@ -247,9 +254,15 @@ export function registerTools(server: McpServer): void {
           .boolean()
           .optional()
           .describe("When true, return only tasks with at least one open blocker."),
+        sort: z
+          .enum(SORT_MODES)
+          .optional()
+          .describe(
+            "Sort sibling tasks by `position` (default — manual order), `priority` (urgent first), `updated`, or `created` (most recent first for the timestamp modes). The sort is applied after the column/parent grouping; cross-column structure is preserved.",
+          ),
       },
     },
-    async ({ column, parent_id, tag, any_tag, query, ready, blocked }) =>
+    async ({ column, parent_id, tag, any_tag, query, ready, blocked, sort }) =>
       withDb((db) => {
         const filter: ListFilter = {};
         if (column) filter.columnId = resolveColumnId(db, column);
@@ -260,7 +273,8 @@ export function registerTools(server: McpServer): void {
         if (ready !== undefined) filter.ready = ready;
         if (blocked !== undefined) filter.blocked = blocked;
         const ctx = buildContext(db);
-        const tasks = listTasks(db, filter);
+        const sortMode: SortMode = sort ?? "position";
+        const tasks = sortTasks(listTasks(db, filter), sortMode);
         return {
           project_root: findProjectRoot(process.cwd()),
           count: tasks.length,

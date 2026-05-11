@@ -45,6 +45,44 @@ export interface NewTask {
   dependsOn?: string[];
 }
 
+// Card / row ordering modes. `position` is the manual fractional index the
+// drag-and-drop and CLI workflows mutate; the others are presentational
+// re-sorts applied AFTER filtering and BEFORE rendering. When a non-position
+// mode is active in the desktop UI, drag-and-drop is disabled — reordering
+// would write to `position` while the user is looking at a different sort.
+export const SORT_MODES = ["position", "priority", "updated", "created"] as const;
+export type SortMode = (typeof SORT_MODES)[number];
+
+// Re-sort a task array by the requested mode. `position` is a no-op (callers
+// already get position-ordered rows from listTasks). The non-position modes
+// produce a NEW sorted array — we don't mutate the input so callers can keep
+// their own reference around. JS's Array.prototype.sort is stable since
+// ES2019, so equal keys preserve the input order (i.e. the existing
+// column-then-position grouping) without an explicit secondary key.
+//
+// `priority`: ascending priority value (0 = urgent first).
+// `updated` / `created`: descending timestamp (most recent first).
+//
+// Lives in types/ (not domain/) because the renderer can't import from
+// shared/domain — that path pulls in better-sqlite3 / fs. This function is
+// pure and operates only on the `Task` shape, so it's safe to share.
+export function sortTasks(tasks: Task[], mode: SortMode): Task[] {
+  if (mode === "position") return tasks;
+  const copy = [...tasks];
+  switch (mode) {
+    case "priority":
+      copy.sort((a, b) => a.priority - b.priority);
+      break;
+    case "updated":
+      copy.sort((a, b) => b.updatedAt - a.updatedAt);
+      break;
+    case "created":
+      copy.sort((a, b) => b.createdAt - a.createdAt);
+      break;
+  }
+  return copy;
+}
+
 export interface TaskUpdate {
   title?: string;
   description?: string;

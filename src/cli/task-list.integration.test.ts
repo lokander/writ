@@ -139,4 +139,30 @@ describe.concurrent("writ task list", () => {
       expect(r.exitCode).toBe(0);
       expect(r.stdout).toContain("alias-test");
     }));
+
+  it("--sort priority orders siblings urgent-first within each column", () =>
+    withProject(async (dir) => {
+      await init(dir);
+      await runWrit(dir, ["task", "add", "low-task", "--priority", "l"]);
+      await runWrit(dir, ["task", "add", "urgent-task", "--priority", "u"]);
+      await runWrit(dir, ["task", "add", "normal-task"]);
+
+      const r = await runWrit(dir, ["task", "list", "--sort", "priority"]);
+      expect(r.exitCode).toBe(0);
+      const lines = r.stdout.split("\n");
+      const urg = lines.findIndex((l) => l.includes("urgent-task"));
+      const norm = lines.findIndex((l) => l.includes("normal-task"));
+      const low = lines.findIndex((l) => l.includes("low-task"));
+      expect(urg).toBeGreaterThan(-1);
+      expect(urg).toBeLessThan(norm);
+      expect(norm).toBeLessThan(low);
+    }));
+
+  it("--sort rejects unknown values", () =>
+    withProject(async (dir) => {
+      await init(dir);
+      const r = await runWrit(dir, ["task", "list", "--sort", "bogus"]);
+      expect(r.exitCode).not.toBe(0);
+      expect(r.stderr).toMatch(/Invalid --sort/);
+    }));
 });

@@ -74,6 +74,7 @@ for sub in list ls
     complete -c writ -n "__writ_using_nested task $sub" -l show-archived -d "Include the Archived column"
     complete -c writ -n "__writ_using_nested task $sub" -l ready         -d "Only tasks with all blockers resolved"
     complete -c writ -n "__writ_using_nested task $sub" -l blocked       -d "Only tasks with open blockers"
+    complete -c writ -n "__writ_using_nested task $sub" -l sort          -d "Sort sibling order" -r -a "position priority updated created"
 end
 
 # task add flags

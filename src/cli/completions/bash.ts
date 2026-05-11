@@ -50,7 +50,7 @@ _writ_completions() {
             fi
             case "$nested" in
                 list)
-                    COMPREPLY=( $(compgen -W "--col --tag --any-tag --priority --grep --show-done --show-archived --ready --blocked --help" -- "$cur") )
+                    COMPREPLY=( $(compgen -W "--col --tag --any-tag --priority --grep --show-done --show-archived --ready --blocked --sort --help" -- "$cur") )
                     ;;
                 add)
                     COMPREPLY=( $(compgen -W "--priority --col --description --parent --tag --depends-on --help" -- "$cur") )

@@ -4,18 +4,42 @@
 </script>
 
 <script lang="ts">
-  import { FolderOpenIcon, KanbanIcon, ListIcon, NotepadIcon, PlusIcon } from "phosphor-svelte";
+  import {
+    FolderOpenIcon,
+    KanbanIcon,
+    ListIcon,
+    NotepadIcon,
+    PlusIcon,
+    SortAscendingIcon,
+    XIcon,
+  } from "phosphor-svelte";
 
+  import type { SortMode } from "../../../../shared/types";
   import { writState } from "../state.svelte";
 
   interface Props {
     view: View;
     onViewChange: (v: View) => void;
+    sortMode: SortMode;
+    onSortChange: (m: SortMode) => void;
     onOpenProject: () => void;
     onNewTask: () => void;
   }
 
-  let { view, onViewChange, onOpenProject, onNewTask }: Props = $props();
+  let { view, onViewChange, sortMode, onSortChange, onOpenProject, onNewTask }: Props = $props();
+
+  // `position` is the implicit default — drag-and-drop writes to it and it
+  // matches the underlying row order. We hide it from the menu and call it
+  // "default" in the label so the user doesn't have to know about the
+  // position-vs-other-modes split, just "sorted" vs "not sorted".
+  const ACTIVE_SORT_MODES = ["priority", "updated", "created"] as const;
+
+  // Title-case for the dropdown label. Lowercased single-word modes mean a
+  // one-char .toUpperCase() is enough — no locale gymnastics needed.
+  function labelFor(m: SortMode): string {
+    if (m === "position") return "default";
+    return m[0]!.toUpperCase() + m.slice(1);
+  }
 
   // Rename state is purely local to the project-name affordance — no other
   // chrome cares whether the user is mid-edit, so it lives here rather than
@@ -118,6 +142,75 @@
     {/if}
   </div>
   <div class="flex justify-end gap-1">
+    {#if writState.project && !writState.loading}
+      <!-- Sort picker. `position` is treated as "no sort" / default —
+           drag-and-drop writes to position and the row order matches it,
+           so the user doesn't need to think of it as a sort. The dropdown
+           menu lists only the three active modes; when one is selected
+           the trigger shows "Sorting: <mode>" and a sibling X button
+           appears that returns to default. -->
+      <!-- Single visual pill. The wrapper carries the surface (background,
+           rounding, text color); the inner dropdown trigger and the
+           clear-X are bare-styled buttons so they read as inline parts
+           of one control rather than two adjacent buttons. The pill
+           takes on a primary tint only when a non-default sort is active. -->
+      <div
+        class={[
+          "flex h-[1.5rem] items-center rounded-field text-xs",
+          sortMode === "position" ? "bg-base-300" : "bg-primary/15 text-primary",
+        ]}
+      >
+        <div class="dropdown dropdown-end">
+          <button
+            type="button"
+            tabindex="0"
+            class={[
+              "flex h-[1.5rem] items-center gap-1 rounded-l-field px-2 hover:bg-base-content/10",
+              sortMode === "position" && "rounded-r-field",
+            ]}
+            title="Sort cards by…"
+            aria-label="Sort mode"
+          >
+            <SortAscendingIcon size={14} weight="bold" />
+            <span class="hidden sm:inline">Sorting: {labelFor(sortMode)}</span>
+          </button>
+          <ul
+            tabindex="-1"
+            class="menu dropdown-content z-10 mt-1 w-40 rounded-box bg-base-200 p-1 text-sm text-base-content shadow"
+          >
+            {#each ACTIVE_SORT_MODES as m (m)}
+              <li>
+                <button
+                  type="button"
+                  class:menu-active={sortMode === m}
+                  onclick={(e) => {
+                    onSortChange(m);
+                    // Daisy dropdowns stay open as long as any element
+                    // inside has focus. Clicking a menu item keeps focus
+                    // on it, so the dropdown lingers; blur to drop focus
+                    // back to body and let the :focus-within close fire.
+                    (e.currentTarget as HTMLElement).blur();
+                  }}
+                >
+                  {labelFor(m)}
+                </button>
+              </li>
+            {/each}
+          </ul>
+        </div>
+        {#if sortMode !== "position"}
+          <button
+            type="button"
+            class="flex h-[1.5rem] items-center rounded-r-field px-1.5 hover:bg-base-content/10"
+            title="Clear sort (return to default)"
+            aria-label="Clear sort"
+            onclick={() => onSortChange("position")}
+          >
+            <XIcon size={12} weight="bold" />
+          </button>
+        {/if}
+      </div>
+    {/if}
     {#if !writState.loading}
       <button
         type="button"

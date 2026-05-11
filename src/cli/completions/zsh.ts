@@ -72,7 +72,8 @@ _writ() {
                                         '--show-done[Include the Done column]' \\
                                         '--show-archived[Include the Archived column]' \\
                                         '--ready[Only tasks with all blockers resolved]' \\
-                                        '--blocked[Only tasks with open blockers]'
+                                        '--blocked[Only tasks with open blockers]' \\
+                                        '--sort[Sort sibling order]:mode:(position priority updated created)'
                                     ;;
                                 add)
                                     _arguments \\

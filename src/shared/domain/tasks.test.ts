@@ -14,6 +14,7 @@ import {
   listTasks,
   moveTask,
   resolveTaskId,
+  sortTasks,
   updateTask,
 } from "./tasks";
 
@@ -351,5 +352,51 @@ describe("resolveTaskId", () => {
   it("rejects empty input as not found rather than matching everything", () => {
     createTask(db, { title: "X" });
     expect(() => resolveTaskId(db, "")).toThrow(TaskNotFoundError);
+  });
+});
+
+describe("sortTasks", () => {
+  it("position mode returns the input unchanged (identity)", () => {
+    const a = createTask(db, { title: "a" });
+    const b = createTask(db, { title: "b" });
+    const input = listTasks(db);
+    const sorted = sortTasks(input, "position");
+    expect(sorted).toBe(input);
+    expect(sorted.map((t) => t.id)).toEqual([a.id, b.id]);
+  });
+
+  it("priority sorts urgent first, breaks ties with input order (stable)", () => {
+    const low = createTask(db, { title: "low", priority: 3 });
+    const urg1 = createTask(db, { title: "urg1", priority: 0 });
+    const norm = createTask(db, { title: "norm", priority: 2 });
+    const urg2 = createTask(db, { title: "urg2", priority: 0 });
+    const sorted = sortTasks(listTasks(db), "priority");
+    expect(sorted.map((t) => t.id)).toEqual([urg1.id, urg2.id, norm.id, low.id]);
+  });
+
+  it("updated sorts most-recent first", async () => {
+    const a = createTask(db, { title: "a" });
+    const b = createTask(db, { title: "b" });
+    await new Promise((r) => setTimeout(r, 5));
+    updateTask(db, a.id, { title: "a*" });
+    const sorted = sortTasks(listTasks(db), "updated");
+    expect(sorted.map((t) => t.id)).toEqual([a.id, b.id]);
+  });
+
+  it("created sorts most-recent first", async () => {
+    const a = createTask(db, { title: "a" });
+    await new Promise((r) => setTimeout(r, 5));
+    const b = createTask(db, { title: "b" });
+    const sorted = sortTasks(listTasks(db), "created");
+    expect(sorted.map((t) => t.id)).toEqual([b.id, a.id]);
+  });
+
+  it("does not mutate the input array for non-position modes", () => {
+    createTask(db, { title: "a", priority: 3 });
+    createTask(db, { title: "b", priority: 0 });
+    const input = listTasks(db);
+    const inputCopy = input.slice();
+    sortTasks(input, "priority");
+    expect(input.map((t) => t.id)).toEqual(inputCopy.map((t) => t.id));
   });
 });
