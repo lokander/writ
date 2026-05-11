@@ -16,7 +16,7 @@ function __writ_no_subcommand
     end
     for word in $cmd[2..-1]
         switch $word
-            case init task tags project mcp completion
+            case init task tags project mcp import-prompt completion
                 return 1
         end
     end
@@ -47,6 +47,7 @@ complete -c writ -n __writ_no_subcommand -a task       -d "Manage tasks"
 complete -c writ -n __writ_no_subcommand -a tags       -d "List, rename, recolor, and prune project tags"
 complete -c writ -n __writ_no_subcommand -a project    -d "Inspect or configure the project"
 complete -c writ -n __writ_no_subcommand -a mcp        -d "Run the MCP server or install it"
+complete -c writ -n __writ_no_subcommand -a import-prompt -d "Print an agent prompt for migrating a TODO file"
 complete -c writ -n __writ_no_subcommand -a completion -d "Print a shell completion script"
 
 # task subcommands. Aliases listed alongside canonicals so users discover
@@ -128,6 +129,9 @@ complete -c writ -n "__writ_using mcp; and not __fish_seen_subcommand_from $mcp_
 complete -c writ -n "__writ_using_nested mcp install" -l command -d "Override the MCP command path" -r
 complete -c writ -n "__writ_using_nested mcp install" -s y -l yes -d "Skip the overwrite confirmation prompt"
 complete -c writ -n "__writ_using_nested mcp install" -l dry-run -d "Print what would be written without modifying .mcp.json"
+
+# import-prompt flags
+complete -c writ -n "__writ_using import-prompt" -l file -d "TODO file to inline into the prompt" -r -F
 
 # completion arg
 complete -c writ -n "__writ_using completion" -a "bash zsh fish"

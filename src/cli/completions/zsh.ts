@@ -14,6 +14,7 @@ _writ() {
         'tags:List, rename, recolor, and prune project tags'
         'project:Inspect or configure the project'
         'mcp:Run the MCP server or install it into a project'
+        'import-prompt:Print an agent prompt for migrating a TODO file into writ'
         'completion:Print a shell completion script'
     )
     task_subs=(
@@ -144,6 +145,9 @@ _writ() {
                             fi
                             ;;
                     esac
+                    ;;
+                import-prompt)
+                    _arguments '--file[Inline a TODO file into the prompt]:file:_files'
                     ;;
                 completion)
                     _values 'shell' $shells

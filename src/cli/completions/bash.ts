@@ -13,7 +13,7 @@ _writ_completions() {
     local i=1
     while [[ $i -lt $cword ]]; do
         case "\${COMP_WORDS[i]}" in
-            init|task|tags|project|mcp|completion)
+            init|task|tags|project|mcp|import-prompt|completion)
                 subcommand="\${COMP_WORDS[i]}"
                 ((i++))
                 if [[ $i -lt $cword ]]; then
@@ -38,7 +38,7 @@ _writ_completions() {
     done
 
     if [[ -z "$subcommand" ]]; then
-        COMPREPLY=( $(compgen -W "init task tags project mcp completion --help --version" -- "$cur") )
+        COMPREPLY=( $(compgen -W "init task tags project mcp import-prompt completion --help --version" -- "$cur") )
         return
     fi
 
@@ -96,6 +96,9 @@ _writ_completions() {
             elif [[ "$nested" == "install" ]]; then
                 COMPREPLY=( $(compgen -W "--command --yes --dry-run --help" -- "$cur") )
             fi
+            ;;
+        import-prompt)
+            COMPREPLY=( $(compgen -W "--file --help" -- "$cur") )
             ;;
         completion)
             COMPREPLY=( $(compgen -W "bash zsh fish" -- "$cur") )

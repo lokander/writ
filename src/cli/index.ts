@@ -2,6 +2,7 @@
 import { Command } from "commander";
 import pkg from "../../package.json" with { type: "json" };
 import { completionCommand } from "./commands/completion";
+import { importPromptCommand } from "./commands/import-prompt";
 import { initCommand } from "./commands/init";
 import { mcpCommand } from "./commands/mcp";
 import { projectCommand } from "./commands/project";
@@ -29,6 +30,7 @@ async function main(): Promise<void> {
   program.addCommand(tagsCommand());
   program.addCommand(projectCommand());
   program.addCommand(mcpCommand());
+  program.addCommand(importPromptCommand());
   program.addCommand(completionCommand());
 
   await program.parseAsync(process.argv);
