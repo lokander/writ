@@ -15,11 +15,11 @@ import { installApiStub, seedWritState } from "../test-helpers";
 import KanbanView from "./KanbanView.svelte";
 
 const COLUMNS: Column[] = [
-  { id: "col-backlog", name: "Backlog" },
-  { id: "col-todo", name: "Todo" },
-  { id: "col-doing", name: "Doing" },
-  { id: "col-done", name: "Done" },
-  { id: "col-archived", name: "Archived" },
+  { id: "col-backlog", name: "Backlog", position: 1000 },
+  { id: "col-todo", name: "Todo", position: 2000 },
+  { id: "col-doing", name: "Doing", position: 3000 },
+  { id: "col-done", name: "Done", position: 4000 },
+  { id: "col-archived", name: "Archived", position: 5000 },
 ];
 
 function mountKanban(

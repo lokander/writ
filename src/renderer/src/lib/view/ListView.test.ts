@@ -18,10 +18,10 @@ import { installApiStub, seedWritState } from "../test-helpers";
 import ListView from "./ListView.svelte";
 
 const COLUMNS: Column[] = [
-  { id: "col-backlog", name: "Backlog" },
-  { id: "col-todo", name: "Todo" },
-  { id: "col-doing", name: "Doing" },
-  { id: "col-done", name: "Done" },
+  { id: "col-backlog", name: "Backlog", position: 1000 },
+  { id: "col-todo", name: "Todo", position: 2000 },
+  { id: "col-doing", name: "Doing", position: 3000 },
+  { id: "col-done", name: "Done", position: 4000 },
 ];
 
 const COLUMN_NAME_BY_ID: Record<string, string> = Object.fromEntries(

@@ -15,8 +15,8 @@ import { installApiStub, seedWritState } from "../test-helpers";
 import ParentPicker from "./ParentPicker.svelte";
 
 const COLUMNS: Column[] = [
-  { id: "col-todo", name: "Todo" },
-  { id: "col-doing", name: "Doing" },
+  { id: "col-todo", name: "Todo", position: 1000 },
+  { id: "col-doing", name: "Doing", position: 2000 },
 ];
 
 function setupTasks(): void {

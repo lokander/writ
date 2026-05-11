@@ -19,6 +19,7 @@ const NODE_BUILTINS = [
   "path",
   "process",
   "readline",
+  "readline/promises",
   "stream",
   "url",
   "util",

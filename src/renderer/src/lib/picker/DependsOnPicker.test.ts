@@ -14,7 +14,7 @@ import { installApiStub, seedWritState } from "../test-helpers";
 
 import DependsOnPicker from "./DependsOnPicker.svelte";
 
-const COLUMNS: Column[] = [{ id: "col-todo", name: "Todo" }];
+const COLUMNS: Column[] = [{ id: "col-todo", name: "Todo", position: 1000 }];
 
 beforeEach(() => {
   installApiStub();

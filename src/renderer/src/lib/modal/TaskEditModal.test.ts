@@ -37,12 +37,13 @@ beforeEach(() => {
   // writState.tasks afterwards to simulate external state changes.
   seedWritState({
     project: {
-      id: "p1",
+      projectId: "p1",
       root: "/tmp/p",
       prettyRoot: "/tmp/p",
+      dbPath: "/tmp/p/.writ/writ.db",
       displayName: null,
     },
-    columns: [{ id: "col-todo", name: "Todo" }],
+    columns: [{ id: "col-todo", name: "Todo", position: 1000 }],
     tasks: [
       makeTask({
         id: TASK_ID,
