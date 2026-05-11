@@ -3,7 +3,15 @@
 
   import AddTaskModal from "./lib/modal/AddTaskModal.svelte";
   import AppBar, { VIEWS, type View } from "./lib/bar/AppBar.svelte";
-  import FilterBar, { STATE_FILTERS, type StateFilter } from "./lib/bar/FilterBar.svelte";
+  import FilterBar from "./lib/bar/FilterBar.svelte";
+  import {
+    STATE_FILTERS,
+    emptyFilter,
+    filtersActive as computeFiltersActive,
+    matchesFilters as taskMatchesFilters,
+    type FilterState,
+    type StateFilter,
+  } from "./lib/filter";
   import { SORT_MODES, sortTasks, type SortMode } from "../../shared/types";
   import ConfirmDialog from "./lib/modal/ConfirmDialog.svelte";
   import EmptyState from "./lib/view/EmptyState.svelte";
@@ -73,15 +81,24 @@
   let tagMode = $state<"all" | "any">("all");
   let stateFilter = $state<StateFilter>("any");
 
-  const filtersActive = $derived(
-    filterTags.length > 0 || filterPriorities.length > 0 || stateFilter !== "any",
-  );
+  // Single object the filter helpers consume. Derived from the four
+  // individual `$state` slots — keeping them split lets `bind:` work in
+  // FilterBar without thrashing the whole object.
+  const filterState = $derived<FilterState>({
+    tags: filterTags,
+    tagMode,
+    priorities: filterPriorities,
+    state: stateFilter,
+  });
+
+  const filtersActive = $derived(computeFiltersActive(filterState));
 
   function clearFilters(): void {
-    filterTags = [];
-    filterPriorities = [];
-    tagMode = "all";
-    stateFilter = "any";
+    const empty = emptyFilter();
+    filterTags = empty.tags;
+    filterPriorities = empty.priorities;
+    tagMode = empty.tagMode;
+    stateFilter = empty.state;
   }
 
   function onViewChange(v: View): void {
@@ -140,34 +157,15 @@
     }
   });
 
-  function matchesFilters(task: Task): boolean {
-    if (filterTags.length > 0) {
-      // tagMode picks the combinator: "all" → every selected tag on the task
-      // (AND), "any" → at least one (OR, parity with CLI's --any-tag).
-      if (tagMode === "any") {
-        if (!filterTags.some((want) => task.tags.includes(want))) return false;
-      } else {
-        for (const want of filterTags) {
-          if (!task.tags.includes(want)) return false;
-        }
-      }
-    }
-    // OR across selected priority chips: any match passes. Empty = no narrowing.
-    if (filterPriorities.length > 0 && !filterPriorities.includes(task.priority)) {
-      return false;
-    }
-    if (stateFilter === "ready" && !task.isReady) return false;
-    if (stateFilter === "blocked" && task.blockedBy.length === 0) return false;
-    return true;
-  }
-
   // Sort first so both the flat (kanban) and hierarchical (list) paths see
   // siblings in the chosen order. childrenByParent is built from this same
   // sorted array so children appear in priority/updated/created order under
   // their parent without a second sort pass.
   const sortedTasks = $derived(sortTasks(writState.tasks, sortMode));
 
-  const visibleTasks = $derived(filtersActive ? sortedTasks.filter(matchesFilters) : sortedTasks);
+  const visibleTasks = $derived(
+    filtersActive ? sortedTasks.filter((t) => taskMatchesFilters(t, filterState)) : sortedTasks,
+  );
 
   const childrenByParent = $derived.by(() => {
     const map: Record<string, Task[]> = {};

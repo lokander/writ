@@ -1,3 +1,4 @@
+import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { defineConfig } from "vitest/config";
 
 // CLI integration tests shell out to `bin/writ-dev` (Electron-as-Node) per
@@ -15,10 +16,18 @@ import { defineConfig } from "vitest/config";
 // integration tests either way. Bump the per-test timeout too, as a safety
 // margin for the cases where a single subprocess still takes a bit longer
 // under contention from in-file `it.concurrent` peers.
+// `svelte()` plugin compiles .svelte SFCs that renderer tests import. Tests
+// pick the DOM emulator via a per-file `// @vitest-environment happy-dom`
+// pragma — keeping the default at "node" means the existing CLI / domain /
+// MCP suites don't pay the happy-dom startup cost, only renderer files do.
+// The setup file pulls in jest-dom's matchers (`toBeInTheDocument`, etc.)
+// for the renderer tests; node-env tests don't load it.
 export default defineConfig({
+  plugins: [svelte({ hot: false })],
   test: {
     testTimeout: 15000,
     maxWorkers: 4,
     minWorkers: 1,
+    setupFiles: ["./src/renderer/src/test-setup.ts"],
   },
 });

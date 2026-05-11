@@ -1,13 +1,9 @@
-<script lang="ts" module>
-  export type StateFilter = "any" | "ready" | "blocked";
-  export const STATE_FILTERS: StateFilter[] = ["any", "ready", "blocked"];
-</script>
-
 <script lang="ts">
   import { FlagIcon, FunnelIcon, TagIcon, XIcon } from "phosphor-svelte";
 
   import { PRIORITY_NAMES, type Priority, type Tag } from "../../../../shared/types";
   import { PRIORITY_DOT_CLASS } from "../priority-color";
+  import { STATE_FILTERS, type StateFilter } from "../filter";
   import TagChip from "../chip/TagChip.svelte";
 
   interface Props {
