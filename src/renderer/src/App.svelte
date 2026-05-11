@@ -76,17 +76,13 @@
   // tag names rarely collide cross-project.
   let filterTags = $state<string[]>([]);
   let filterPriorities = $state<Priority[]>([]);
-  // How selected tag chips combine: "all" requires every selected tag on the
-  // task (AND); "any" requires at least one (OR — parity with `--any-tag`).
-  let tagMode = $state<"all" | "any">("all");
   let stateFilter = $state<StateFilter>("any");
 
-  // Single object the filter helpers consume. Derived from the four
+  // Single object the filter helpers consume. Derived from the three
   // individual `$state` slots — keeping them split lets `bind:` work in
   // FilterBar without thrashing the whole object.
   const filterState = $derived<FilterState>({
     tags: filterTags,
-    tagMode,
     priorities: filterPriorities,
     state: stateFilter,
   });
@@ -97,7 +93,6 @@
     const empty = emptyFilter();
     filterTags = empty.tags;
     filterPriorities = empty.priorities;
-    tagMode = empty.tagMode;
     stateFilter = empty.state;
   }
 
@@ -129,7 +124,6 @@
         FILTER_STORAGE_KEY,
         JSON.stringify({
           tags: filterTags,
-          tagMode,
           priorities: filterPriorities,
           state: stateFilter,
         }),
@@ -230,15 +224,11 @@
       if (raw) {
         const parsed = JSON.parse(raw) as {
           tags?: unknown;
-          tagMode?: unknown;
           priorities?: unknown;
           state?: unknown;
         };
         if (Array.isArray(parsed.tags) && parsed.tags.every((v) => typeof v === "string")) {
           filterTags = parsed.tags;
-        }
-        if (parsed.tagMode === "all" || parsed.tagMode === "any") {
-          tagMode = parsed.tagMode;
         }
         if (
           Array.isArray(parsed.priorities) &&
@@ -397,7 +387,6 @@
     <FilterBar
       bind:tags={filterTags}
       bind:priorities={filterPriorities}
-      bind:tagMode
       bind:stateFilter
       {visibleTagChips}
       {filtersActive}

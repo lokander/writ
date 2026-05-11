@@ -26,7 +26,6 @@ function renderBar({ tags = [] }: RenderOpts = {}): RenderResult<typeof FilterBa
   return render(FilterBar, {
     tags,
     priorities: [],
-    tagMode: "all",
     stateFilter: "any",
     visibleTagChips: TAGS,
     filtersActive: tags.length > 0,

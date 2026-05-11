@@ -15,6 +15,6 @@
   "eslint.validate": ["javascript", "javascriptreact", "svelte"],
   "files.associations": {
     "*.css": "tailwindcss",
-    "*.scss": "tailwindcss",
-  },
+    "*.scss": "tailwindcss"
+  }
 }

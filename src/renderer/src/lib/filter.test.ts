@@ -17,23 +17,13 @@ describe("filtersActive", () => {
     expect(filtersActive(f({ priorities: [0] }))).toBe(true);
     expect(filtersActive(f({ state: "ready" }))).toBe(true);
   });
-
-  it("tagMode alone is not an active filter (it only matters when tags are set)", () => {
-    expect(filtersActive(f({ tagMode: "any" }))).toBe(false);
-  });
 });
 
-describe("matchesFilters — tags (AND vs OR)", () => {
-  it("`all` requires every selected tag on the task", () => {
+describe("matchesFilters — tags", () => {
+  it("ANDs across the selection — task must have every selected tag", () => {
     const task = makeTask({ tags: ["ui", "core"] });
-    expect(matchesFilters(task, f({ tags: ["ui", "core"], tagMode: "all" }))).toBe(true);
-    expect(matchesFilters(task, f({ tags: ["ui", "missing"], tagMode: "all" }))).toBe(false);
-  });
-
-  it("`any` accepts a task with at least one of the selected tags", () => {
-    const task = makeTask({ tags: ["ui"] });
-    expect(matchesFilters(task, f({ tags: ["ui", "core"], tagMode: "any" }))).toBe(true);
-    expect(matchesFilters(task, f({ tags: ["core", "backend"], tagMode: "any" }))).toBe(false);
+    expect(matchesFilters(task, f({ tags: ["ui", "core"] }))).toBe(true);
+    expect(matchesFilters(task, f({ tags: ["ui", "missing"] }))).toBe(false);
   });
 
   it("empty tags array is a no-op (task matches regardless of its own tags)", () => {

@@ -8,13 +8,12 @@
   import Combobox from "../picker/Combobox.svelte";
 
   interface Props {
-    /** Selected tag names. Replaced wholesale on toggle (no mutation). */
+    /** Selected tag names. Replaced wholesale on toggle (no mutation).
+     *  ANDed in matchesFilters — the renderer doesn't surface OR mode
+     *  (use the CLI's `--any-tag` if you need it). */
     tags: string[];
     /** Selected priorities (multi-select). */
     priorities: Priority[];
-    /** How selected tag chips combine: "all" = AND, "any" = OR (parity with
-     *  the CLI's `--any-tag`). */
-    tagMode: "all" | "any";
     /** State (ready/blocked/any) narrowing. */
     stateFilter: StateFilter;
     /** Tag chips to render — owner-derived from the tasks currently visible
@@ -29,7 +28,6 @@
   let {
     tags = $bindable(),
     priorities = $bindable(),
-    tagMode = $bindable(),
     stateFilter = $bindable(),
     visibleTagChips,
     filtersActive,
@@ -72,7 +70,6 @@
   function clearAll(): void {
     tags = [];
     priorities = [];
-    tagMode = "all";
     stateFilter = "any";
   }
 </script>
@@ -118,21 +115,6 @@
   {#if visibleTagChips.length > 0}
     <div class="flex flex-wrap items-center gap-2">
       <TagIcon size={14} class="opacity-50" aria-label="Tags" />
-      <div class="join">
-        {#each ["all", "any"] as const as mode (mode)}
-          <button
-            type="button"
-            class="btn btn-primary btn-xs join-item"
-            class:btn-soft={tagMode !== mode}
-            title={mode === "all"
-              ? "Match tasks tagged with every selected tag"
-              : "Match tasks tagged with any of the selected tags"}
-            onclick={() => (tagMode = mode)}
-          >
-            {mode[0].toUpperCase() + mode.slice(1)}
-          </button>
-        {/each}
-      </div>
       <div class="w-40">
         <Combobox
           items={availableTags}

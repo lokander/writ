@@ -2,11 +2,12 @@
 // without mounting a component — the function is pure, takes a task plus
 // the current filter state, returns a yes/no match.
 //
-// Keeps parity with the CLI: tag chips combine via `tagMode` ("all" = AND,
-// "any" = OR — same as `--any-tag`), priorities OR across the chip set,
-// and `state` narrows to ready / blocked / any. An empty filter set never
-// excludes; the caller short-circuits via `filtersActive` so we don't even
-// have to walk the task list when nothing is selected.
+// Tag chips AND across the selection (task must have every selected tag).
+// The OR mode the CLI exposes via `--any-tag` is intentionally not surfaced
+// in the UI; if you need it, use the CLI. Priorities OR across the chip
+// set, and `state` narrows to ready / blocked / any. An empty filter set
+// never excludes; the caller short-circuits via `filtersActive` so we don't
+// even have to walk the task list when nothing is selected.
 
 import type { Priority, Task } from "../../../shared/types";
 
@@ -14,11 +15,8 @@ export type StateFilter = "any" | "ready" | "blocked";
 export const STATE_FILTERS: StateFilter[] = ["any", "ready", "blocked"];
 
 export interface FilterState {
-  /** Selected tag names. */
+  /** Selected tag names. ANDed: a task matches only if it carries every one. */
   tags: string[];
-  /** "all" → task must have every selected tag (AND); "any" → at least one
-   *  (OR, parity with the CLI's --any-tag). */
-  tagMode: "all" | "any";
   /** Selected priorities. OR semantics across the array. */
   priorities: Priority[];
   /** State narrowing — ready, blocked, or no narrowing ("any"). */
@@ -26,7 +24,7 @@ export interface FilterState {
 }
 
 export function emptyFilter(): FilterState {
-  return { tags: [], tagMode: "all", priorities: [], state: "any" };
+  return { tags: [], priorities: [], state: "any" };
 }
 
 export function filtersActive(f: FilterState): boolean {
@@ -34,14 +32,8 @@ export function filtersActive(f: FilterState): boolean {
 }
 
 export function matchesFilters(task: Task, f: FilterState): boolean {
-  if (f.tags.length > 0) {
-    if (f.tagMode === "any") {
-      if (!f.tags.some((want) => task.tags.includes(want))) return false;
-    } else {
-      for (const want of f.tags) {
-        if (!task.tags.includes(want)) return false;
-      }
-    }
+  for (const want of f.tags) {
+    if (!task.tags.includes(want)) return false;
   }
   if (f.priorities.length > 0 && !f.priorities.includes(task.priority)) {
     return false;
