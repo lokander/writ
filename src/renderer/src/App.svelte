@@ -398,7 +398,7 @@
       bind:tags={filterTags}
       bind:priorities={filterPriorities}
       bind:tagMode
-      bind:state={stateFilter}
+      bind:stateFilter
       {visibleTagChips}
       {filtersActive}
     />

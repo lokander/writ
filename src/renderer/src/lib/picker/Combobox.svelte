@@ -147,6 +147,7 @@
     bind:value
     onfocus={() => (open = true)}
     oninput={() => (open = true)}
+    onclick={() => (open = true)}
     onblur={() => (open = false)}
     onkeydown={onKeydown}
     aria-autocomplete="list"

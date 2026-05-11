@@ -5,6 +5,7 @@
   import { PRIORITY_DOT_CLASS } from "../priority-color";
   import { STATE_FILTERS, type StateFilter } from "../filter";
   import TagChip from "../chip/TagChip.svelte";
+  import Combobox from "../picker/Combobox.svelte";
 
   interface Props {
     /** Selected tag names. Replaced wholesale on toggle (no mutation). */
@@ -15,7 +16,7 @@
      *  the CLI's `--any-tag`). */
     tagMode: "all" | "any";
     /** State (ready/blocked/any) narrowing. */
-    state: StateFilter;
+    stateFilter: StateFilter;
     /** Tag chips to render — owner-derived from the tasks currently visible
      *  so the legend doesn't list tags the user can't see anyway. */
     visibleTagChips: Tag[];
@@ -29,10 +30,12 @@
     tags = $bindable(),
     priorities = $bindable(),
     tagMode = $bindable(),
-    state = $bindable(),
+    stateFilter = $bindable(),
     visibleTagChips,
     filtersActive,
   }: Props = $props();
+
+  let tagQuery = $state("");
 
   // Same priority-chip palette the bar always rendered. Lives here now
   // because nothing outside FilterBar references it.
@@ -47,6 +50,21 @@
     tags = tags.includes(name) ? tags.filter((t) => t !== name) : [...tags, name];
   }
 
+  // Tags in scope but not currently selected — the typeahead's "what you
+  // can still add" set. Selected tags live as chips above the input, where
+  // each chip's X removes it. (Mirroring TagPicker's split: existing chips
+  // for active selection, combobox for the remaining pool.)
+  const availableTags = $derived(visibleTagChips.filter((t) => !tags.includes(t.name)));
+
+  // Pair each selected name with its color from the in-scope tag set so
+  // the chips render with the same palette as the dropdown rows. App.svelte
+  // always keeps filtered tags in `tagsInView`, so the lookup hits.
+  const selectedTags = $derived(
+    tags
+      .map((name): Tag | null => visibleTagChips.find((t) => t.name === name) ?? null)
+      .filter((t): t is Tag => t !== null),
+  );
+
   function togglePriority(p: Priority): void {
     priorities = priorities.includes(p) ? priorities.filter((x) => x !== p) : [...priorities, p];
   }
@@ -55,7 +73,7 @@
     tags = [];
     priorities = [];
     tagMode = "all";
-    state = "any";
+    stateFilter = "any";
   }
 </script>
 
@@ -71,8 +89,8 @@
         <button
           type="button"
           class="btn btn-primary btn-xs join-item"
-          class:btn-soft={state !== opt}
-          onclick={() => (state = opt)}
+          class:btn-soft={stateFilter !== opt}
+          onclick={() => (stateFilter = opt)}
         >
           {opt === "any" ? "All" : opt[0].toUpperCase() + opt.slice(1)}
         </button>
@@ -115,20 +133,31 @@
           </button>
         {/each}
       </div>
-      <div class="flex flex-wrap items-center gap-1">
-        {#each visibleTagChips as tag (tag.name)}
-          {@const active = tags.includes(tag.name)}
-          <button
-            type="button"
-            class="cursor-pointer transition-opacity"
-            class:opacity-40={!active}
-            aria-pressed={active}
-            onclick={() => toggleTag(tag.name)}
-          >
-            <TagChip name={tag.name} color={tag.color} />
-          </button>
-        {/each}
+      <div class="w-40">
+        <Combobox
+          items={availableTags}
+          itemText={(t) => t.name}
+          itemKey={(t) => t.name}
+          onSelect={(t) => toggleTag(t.name)}
+          item={tagOptionRow}
+          bind:value={tagQuery}
+          placeholder={selectedTags.length === 0 ? "Filter by tag…" : "Add tag…"}
+        />
       </div>
+      {#if selectedTags.length > 0}
+        <div class="flex flex-wrap items-center gap-1">
+          {#each selectedTags as tag (tag.name)}
+            <button
+              type="button"
+              class="cursor-pointer"
+              aria-label="Remove tag {tag.name}"
+              onclick={() => toggleTag(tag.name)}
+            >
+              <TagChip name={tag.name} color={tag.color} />
+            </button>
+          {/each}
+        </div>
+      {/if}
     </div>
   {/if}
 
@@ -138,3 +167,7 @@
     </button>
   {/if}
 </div>
+
+{#snippet tagOptionRow({ item: t }: { item: Tag; active: boolean })}
+  <TagChip name={t.name} color={t.color} />
+{/snippet}
