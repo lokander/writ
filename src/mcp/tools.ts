@@ -238,6 +238,12 @@ export function registerTools(server: McpServer): void {
           .describe(
             "Filter to tasks tagged with ANY of these names (OR). Combine with `tag` to AND across the union.",
           ),
+        priority: z
+          .array(PriorityInput)
+          .optional()
+          .describe(
+            "Filter to tasks at any of these priorities (OR semantics across the array). Each entry is `urgent`/`high`/`normal`/`low` or the single-letter alias `u`/`h`/`n`/`l`. Empty array or omitted is a no-op.",
+          ),
         query: z
           .string()
           .optional()
@@ -262,13 +268,14 @@ export function registerTools(server: McpServer): void {
           ),
       },
     },
-    async ({ column, parent_id, tag, any_tag, query, ready, blocked, sort }) =>
+    async ({ column, parent_id, tag, any_tag, priority, query, ready, blocked, sort }) =>
       withDb((db) => {
         const filter: ListFilter = {};
         if (column) filter.columnId = resolveColumnId(db, column);
         if (parent_id !== undefined) filter.parentId = parent_id;
         if (tag !== undefined) filter.tags = tag;
         if (any_tag !== undefined) filter.anyTags = any_tag;
+        if (priority !== undefined) filter.priorities = priority.map((p) => PRIORITY_MAP[p]!);
         if (query !== undefined) filter.query = query;
         if (ready !== undefined) filter.ready = ready;
         if (blocked !== undefined) filter.blocked = blocked;
