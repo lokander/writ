@@ -159,7 +159,7 @@
     <div
       use:portal
       id={listboxId}
-      class="fixed z-[1000] max-h-60 overflow-y-auto rounded-box border border-base-300 bg-base-100 shadow-lg"
+      class="fixed z-1000 max-h-60 overflow-y-auto rounded-box border border-base-300 bg-base-100 shadow-lg"
       style:top="{inputRect.bottom + 4}px"
       style:left="{inputRect.left}px"
       style:width="{inputRect.width}px"
