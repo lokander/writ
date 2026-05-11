@@ -16,7 +16,7 @@ function __writ_no_subcommand
     end
     for word in $cmd[2..-1]
         switch $word
-            case init task project mcp completion
+            case init task tags project mcp completion
                 return 1
         end
     end
@@ -44,6 +44,7 @@ end
 # Top-level
 complete -c writ -n __writ_no_subcommand -a init       -d "Initialize a writ project"
 complete -c writ -n __writ_no_subcommand -a task       -d "Manage tasks"
+complete -c writ -n __writ_no_subcommand -a tags       -d "List, rename, recolor, and prune project tags"
 complete -c writ -n __writ_no_subcommand -a project    -d "Inspect or configure the project"
 complete -c writ -n __writ_no_subcommand -a mcp        -d "Run the MCP server or install it"
 complete -c writ -n __writ_no_subcommand -a completion -d "Print a shell completion script"
@@ -86,6 +87,27 @@ complete -c writ -n "__writ_using_nested task add"      -l depends-on  -d "Block
 # task edit flags
 complete -c writ -n "__writ_using_nested task edit" -l tag        -d "Replace the tag set (repeatable)" -r
 complete -c writ -n "__writ_using_nested task edit" -l depends-on -d "Replace the dependency set (repeatable)" -r
+
+# tags subcommands
+set -l tags_subs list ls remove rm rename color prune
+complete -c writ -n "__writ_using tags; and not __fish_seen_subcommand_from $tags_subs" -a list   -d "List every tag with its color"
+complete -c writ -n "__writ_using tags; and not __fish_seen_subcommand_from $tags_subs" -a ls     -d "Alias for list"
+complete -c writ -n "__writ_using tags; and not __fish_seen_subcommand_from $tags_subs" -a remove -d "Delete a tag globally"
+complete -c writ -n "__writ_using tags; and not __fish_seen_subcommand_from $tags_subs" -a rm     -d "Alias for remove"
+complete -c writ -n "__writ_using tags; and not __fish_seen_subcommand_from $tags_subs" -a rename -d "Rename a tag in place"
+complete -c writ -n "__writ_using tags; and not __fish_seen_subcommand_from $tags_subs" -a color  -d "Set or clear a tag color"
+complete -c writ -n "__writ_using tags; and not __fish_seen_subcommand_from $tags_subs" -a prune  -d "Remove every tag with zero task references"
+
+# tags subcommand flags
+for sub in list ls
+    complete -c writ -n "__writ_using_nested tags $sub" -l with-counts -d "Include usage counts per tag"
+end
+for sub in remove rm
+    complete -c writ -n "__writ_using_nested tags $sub" -s y -l yes -d "Skip the confirmation prompt"
+end
+complete -c writ -n "__writ_using_nested tags color" -l clear   -d "Remove the color override"
+complete -c writ -n "__writ_using_nested tags prune" -s y -l yes -d "Skip the confirmation prompt"
+complete -c writ -n "__writ_using_nested tags prune" -l dry-run -d "Preview without deleting"
 
 # project subcommands
 set -l project_subs show rename

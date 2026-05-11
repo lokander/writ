@@ -4,7 +4,14 @@ import { applyMigrations, openDatabase, type SqliteDb } from "../shared/db";
 import { pingDesktopApp } from "../shared/desktop-ping";
 import { getColumnByName, listColumns } from "../shared/domain/columns";
 import { findProjectRoot, getDbPath } from "../shared/domain/project";
-import { listTags } from "../shared/domain/tags";
+import {
+  deleteTag,
+  listTags,
+  listTagsWithCounts,
+  pruneOrphanTags,
+  renameTag,
+  setTagColor,
+} from "../shared/domain/tags";
 import {
   createTask,
   deleteTask,
@@ -495,16 +502,128 @@ export function registerTools(server: McpServer): void {
     {
       title: "List tags",
       description:
-        "List all tags in the current project with their stored colors. NULL color means no explicit override — the renderer derives one from the tag name.",
-      inputSchema: {},
+        "List all tags in the current project with their stored colors. NULL color means no explicit override — the renderer derives one from the tag name. Pass `with_counts` to also include the number of tasks currently using each tag.",
+      inputSchema: {
+        with_counts: z
+          .boolean()
+          .optional()
+          .describe(
+            "When true, each returned tag also includes `usage_count` — the number of tasks currently referencing it. Useful for spotting orphan tags before calling `prune_tags`.",
+          ),
+      },
     },
-    async () =>
+    async ({ with_counts }) =>
       withDb((db) => {
+        if (with_counts) {
+          const tags = listTagsWithCounts(db);
+          return {
+            count: tags.length,
+            tags: tags.map((t) => ({ name: t.name, color: t.color, usage_count: t.usageCount })),
+          };
+        }
         const tags = listTags(db);
         return {
           count: tags.length,
           tags: tags.map((t) => ({ name: t.name, color: t.color })),
         };
       }),
+  );
+
+  server.registerTool(
+    "rename_tag",
+    {
+      title: "Rename tag",
+      description:
+        "Rename a tag in place. Preserves the tag's id, color, and every task association. Fails if the destination name already exists (no merge — the caller would need to retag tasks explicitly first).",
+      inputSchema: {
+        from: z.string().describe("Current tag name (case-sensitive)."),
+        to: z
+          .string()
+          .describe(
+            "New tag name. Must match `^[a-zA-Z0-9][a-zA-Z0-9_-]*$` and not collide with an existing tag.",
+          ),
+      },
+    },
+    async ({ from, to }) =>
+      withDb(
+        (db) => {
+          const updated = renameTag(db, from, to);
+          return { renamed: { from, to: updated.name, color: updated.color } };
+        },
+        { notify: true },
+      ),
+  );
+
+  server.registerTool(
+    "delete_tag",
+    {
+      title: "Delete tag",
+      description:
+        "Delete a tag globally. Detaches it from every task that references it (the schema's ON DELETE CASCADE handles the task_tags rows).",
+      inputSchema: {
+        name: z.string().describe("Tag name to delete."),
+      },
+    },
+    async ({ name }) =>
+      withDb(
+        (db) => {
+          if (!deleteTag(db, name)) throw new Error(`Tag '${name}' not found.`);
+          return { deleted: name };
+        },
+        { notify: true },
+      ),
+  );
+
+  server.registerTool(
+    "set_tag_color",
+    {
+      title: "Set tag color",
+      description:
+        "Set or clear a tag's color. Color accepts hex (`#rgb`/`#rrggbb`) or a CSS named color; pass `null` to clear the override and let the renderer hash the name to a palette slot.",
+      inputSchema: {
+        name: z.string().describe("Tag name."),
+        color: z
+          .string()
+          .nullable()
+          .describe("Hex (`#rgb`/`#rrggbb`) or CSS named color, or `null` to clear."),
+      },
+    },
+    async ({ name, color }) =>
+      withDb(
+        (db) => {
+          const updated = setTagColor(db, name, color);
+          return { name: updated.name, color: updated.color };
+        },
+        { notify: true },
+      ),
+  );
+
+  server.registerTool(
+    "prune_tags",
+    {
+      title: "Prune orphan tags",
+      description:
+        "Remove every tag with zero task references. Returns the list of pruned names. Pass `dry_run: true` to preview without deleting.",
+      inputSchema: {
+        dry_run: z
+          .boolean()
+          .optional()
+          .describe("When true, report the orphan tags that would be deleted but don't delete."),
+      },
+    },
+    async ({ dry_run }) =>
+      withDb(
+        (db) => {
+          if (dry_run) {
+            const candidates = listTagsWithCounts(db)
+              .filter((t) => t.usageCount === 0)
+              .map((t) => t.name);
+            return { dry_run: true, would_prune: candidates };
+          }
+          const pruned = pruneOrphanTags(db);
+          return { dry_run: false, pruned };
+        },
+        { notify: !dry_run },
+      ),
   );
 }

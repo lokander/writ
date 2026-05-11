@@ -5,6 +5,7 @@ import { completionCommand } from "./commands/completion";
 import { initCommand } from "./commands/init";
 import { mcpCommand } from "./commands/mcp";
 import { projectCommand } from "./commands/project";
+import { tagsCommand } from "./commands/tags";
 import { taskCommand } from "./commands/task";
 import { launchDesktop } from "./launch";
 
@@ -25,6 +26,7 @@ async function main(): Promise<void> {
 
   program.addCommand(initCommand());
   program.addCommand(taskCommand());
+  program.addCommand(tagsCommand());
   program.addCommand(projectCommand());
   program.addCommand(mcpCommand());
   program.addCommand(completionCommand());

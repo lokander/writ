@@ -13,12 +13,12 @@ _writ_completions() {
     local i=1
     while [[ $i -lt $cword ]]; do
         case "\${COMP_WORDS[i]}" in
-            init|task|project|mcp|completion)
+            init|task|tags|project|mcp|completion)
                 subcommand="\${COMP_WORDS[i]}"
                 ((i++))
                 if [[ $i -lt $cword ]]; then
                     case "\${COMP_WORDS[i]}" in
-                        add|list|ls|move|mv|remove|rm|view|edit|show|rename|install|uninstall)
+                        add|list|ls|move|mv|remove|rm|view|edit|show|rename|install|uninstall|color|prune)
                             # Normalize aliases to their canonical name so the
                             # per-nested flag completion below has a single
                             # case to match.
@@ -38,7 +38,7 @@ _writ_completions() {
     done
 
     if [[ -z "$subcommand" ]]; then
-        COMPREPLY=( $(compgen -W "init task project mcp completion --help --version" -- "$cur") )
+        COMPREPLY=( $(compgen -W "init task tags project mcp completion --help --version" -- "$cur") )
         return
     fi
 
@@ -57,6 +57,26 @@ _writ_completions() {
                     ;;
                 edit)
                     COMPREPLY=( $(compgen -W "--tag --depends-on --help" -- "$cur") )
+                    ;;
+            esac
+            ;;
+        tags)
+            if [[ -z "$nested" ]]; then
+                COMPREPLY=( $(compgen -W "list ls remove rm rename color prune" -- "$cur") )
+                return
+            fi
+            case "$nested" in
+                list)
+                    COMPREPLY=( $(compgen -W "--with-counts --help" -- "$cur") )
+                    ;;
+                remove)
+                    COMPREPLY=( $(compgen -W "--yes --help" -- "$cur") )
+                    ;;
+                color)
+                    COMPREPLY=( $(compgen -W "--clear --help" -- "$cur") )
+                    ;;
+                prune)
+                    COMPREPLY=( $(compgen -W "--yes --dry-run --help" -- "$cur") )
                     ;;
             esac
             ;;

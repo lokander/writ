@@ -6,11 +6,12 @@ export const ZSH_COMPLETION = `#compdef writ
 
 _writ() {
     local context state line
-    local -a commands task_subs project_subs mcp_subs shells
+    local -a commands task_subs tags_subs project_subs mcp_subs shells
 
     commands=(
         'init:Initialize a writ project'
         'task:Manage tasks'
+        'tags:List, rename, recolor, and prune project tags'
         'project:Inspect or configure the project'
         'mcp:Run the MCP server or install it into a project'
         'completion:Print a shell completion script'
@@ -25,6 +26,15 @@ _writ() {
         'rm:Alias for remove'
         'view:Show a task'
         'edit:Open a task in $EDITOR'
+    )
+    tags_subs=(
+        'list:List every tag with its color, sorted by name'
+        'ls:Alias for list'
+        'remove:Delete a tag globally'
+        'rm:Alias for remove'
+        'rename:Rename a tag in place (preserves color and associations)'
+        'color:Set or clear a tag color'
+        'prune:Remove every tag with zero task references'
     )
     project_subs=(
         'show:Print project id, name, and root'
@@ -77,6 +87,30 @@ _writ() {
                                     _arguments \\
                                         '*--tag[Replace the tag set (repeatable)]:tag:' \\
                                         '*--depends-on[Replace the dependency set (repeatable)]:id:'
+                                    ;;
+                            esac
+                            ;;
+                    esac
+                    ;;
+                tags)
+                    _arguments -C '1:subcommand:->sub' '*::sub_arg:->sub_args'
+                    case $state in
+                        sub) _describe -t tags_subs 'tags subcommand' tags_subs ;;
+                        sub_args)
+                            case $line[1] in
+                                list|ls)
+                                    _arguments '--with-counts[Include the number of tasks using each tag]'
+                                    ;;
+                                remove|rm)
+                                    _arguments '(-y --yes)'{-y,--yes}'[Skip the confirmation prompt]'
+                                    ;;
+                                color)
+                                    _arguments '--clear[Remove the color override]'
+                                    ;;
+                                prune)
+                                    _arguments \\
+                                        '(-y --yes)'{-y,--yes}'[Skip the confirmation prompt]' \\
+                                        '--dry-run[Preview without deleting]'
                                     ;;
                             esac
                             ;;

@@ -7,12 +7,19 @@ import { TagValidationError } from "./tag-format";
 import { createTask, deleteTask, getTask, listTasks, updateTask } from "./tasks";
 import {
   addTagToTask,
+  deleteTag,
   getOrCreateTag,
   listTags,
+  listTagsWithCounts,
   listTaskTagNames,
   listTaskTagsByTaskIds,
+  pruneOrphanTags,
   removeTagFromTask,
+  renameTag,
+  setTagColor,
   setTaskTags,
+  TagConflictError,
+  TagNotFoundError,
 } from "./tags";
 
 let db: SqliteDb;
@@ -184,6 +191,116 @@ describe("listTasks tag filters", () => {
     createTask(db, { title: "a", tags: ["UI", "Core"] });
     const [a] = listTasks(db);
     expect(a!.tags).toEqual(["Core", "UI"]);
+  });
+});
+
+describe("listTagsWithCounts", () => {
+  it("reports zero usages for orphaned tags and joins counts otherwise", () => {
+    getOrCreateTag(db, { name: "Lonely" });
+    const a = createTask(db, { title: "a", tags: ["UI"] });
+    createTask(db, { title: "b", tags: ["UI", "Core"] });
+    void a;
+    const withCounts = listTagsWithCounts(db);
+    const byName = Object.fromEntries(withCounts.map((t) => [t.name, t.usageCount]));
+    expect(byName).toEqual({ Lonely: 0, UI: 2, Core: 1 });
+  });
+});
+
+describe("deleteTag", () => {
+  it("removes the tag globally and cascades task_tags rows", () => {
+    const t = createTask(db, { title: "x", tags: ["UI"] });
+    expect(deleteTag(db, "UI")).toBe(true);
+    expect(listTags(db).some((tag) => tag.name === "UI")).toBe(false);
+    // task_tags is cascaded by the FK
+    const refreshed = getTask(db, t.id);
+    expect(refreshed?.tags).toEqual([]);
+  });
+
+  it("returns false for an unknown tag", () => {
+    expect(deleteTag(db, "Nope")).toBe(false);
+  });
+});
+
+describe("renameTag", () => {
+  it("renames in place, preserves id and color, and updates task_tags lookups", () => {
+    const t = createTask(db, { title: "x", tags: ["UI=red"] });
+    const before = listTags(db).find((tag) => tag.name === "UI")!;
+    const renamed = renameTag(db, "UI", "Frontend");
+    expect(renamed.id).toBe(before.id);
+    expect(renamed.color).toBe("red");
+    // The task surfaces the new name on the next read.
+    expect(getTask(db, t.id)?.tags).toEqual(["Frontend"]);
+  });
+
+  it("no-op when old === new", () => {
+    getOrCreateTag(db, { name: "UI" });
+    const r = renameTag(db, "UI", "UI");
+    expect(r.name).toBe("UI");
+  });
+
+  it("throws TagNotFoundError when the source doesn't exist", () => {
+    expect(() => renameTag(db, "ghost", "renamed")).toThrow(TagNotFoundError);
+  });
+
+  it("throws TagConflictError when the destination already exists", () => {
+    getOrCreateTag(db, { name: "A" });
+    getOrCreateTag(db, { name: "B" });
+    expect(() => renameTag(db, "A", "B")).toThrow(TagConflictError);
+  });
+
+  it("rejects invalid new names", () => {
+    getOrCreateTag(db, { name: "A" });
+    expect(() => renameTag(db, "A", "not valid")).toThrow(TagValidationError);
+  });
+});
+
+describe("setTagColor", () => {
+  it("sets a color on an existing tag", () => {
+    getOrCreateTag(db, { name: "UI" });
+    setTagColor(db, "UI", "red");
+    expect(listTags(db).find((t) => t.name === "UI")?.color).toBe("red");
+  });
+
+  it("clears the color when passed null", () => {
+    getOrCreateTag(db, { name: "UI", color: "red" });
+    setTagColor(db, "UI", null);
+    expect(listTags(db).find((t) => t.name === "UI")?.color).toBeNull();
+  });
+
+  it("throws on a bad color value", () => {
+    getOrCreateTag(db, { name: "UI" });
+    expect(() => setTagColor(db, "UI", "not-a-color")).toThrow(TagValidationError);
+  });
+
+  it("throws TagNotFoundError when the tag doesn't exist", () => {
+    expect(() => setTagColor(db, "ghost", "red")).toThrow(TagNotFoundError);
+  });
+});
+
+describe("pruneOrphanTags", () => {
+  it("removes tags with zero references and returns their names sorted", () => {
+    getOrCreateTag(db, { name: "Lonely" });
+    getOrCreateTag(db, { name: "AlsoLonely" });
+    createTask(db, { title: "x", tags: ["Used"] });
+    const removed = pruneOrphanTags(db);
+    expect(removed).toEqual(["AlsoLonely", "Lonely"]);
+    expect(listTags(db).map((t) => t.name)).toEqual(["Used"]);
+  });
+
+  it("is a no-op when there are no orphans", () => {
+    createTask(db, { title: "x", tags: ["Used"] });
+    expect(pruneOrphanTags(db)).toEqual([]);
+    expect(listTags(db).map((t) => t.name)).toEqual(["Used"]);
+  });
+
+  it("removes a tag left behind after the only task that used it is deleted", () => {
+    const t = createTask(db, { title: "x", tags: ["TempTag"] });
+    deleteTask(db, t.id);
+    // Tag itself sticks around (existing behavior — see "task delete cascade"
+    // below); prune is the explicit cleanup.
+    expect(listTags(db).map((t) => t.name)).toContain("TempTag");
+    expect(pruneOrphanTags(db)).toEqual(["TempTag"]);
+    expect(listTags(db).map((t) => t.name)).not.toContain("TempTag");
   });
 });
 
