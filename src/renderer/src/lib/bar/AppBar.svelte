@@ -8,10 +8,10 @@
     FolderOpenIcon,
     KanbanIcon,
     ListIcon,
-    NotepadIcon,
     PlusIcon,
     SortAscendingIcon,
     XIcon,
+    HeadCircuitIcon,
   } from "phosphor-svelte";
 
   import type { SortMode } from "../../../../shared/types";
@@ -74,8 +74,8 @@
 <header class="grid grid-cols-3 items-center gap-3 border-b border-base-300 bg-base-200 px-4 py-2">
   <div class="flex min-w-0 items-center gap-3">
     <span class="flex shrink-0 items-center">
-      <NotepadIcon size={24} weight="duotone" />
-      <h1 class="ml-1 font-mono text-lg font-semibold">writ</h1>
+      <HeadCircuitIcon size={24} weight="duotone" class="opacity-80" />
+      <h1 class="ml-1 font-mono text-lg font-semibold opacity-60">writ</h1>
     </span>
     {#if writState.project}
       {@const usingFallback = writState.project.displayName === null}
@@ -85,7 +85,7 @@
         <!-- svelte-ignore a11y_autofocus -->
         <input
           type="text"
-          class="min-w-0 flex-1 truncate rounded border border-base-content/30 bg-transparent px-2 py-0.5 font-mono text-lg outline-none focus:border-primary"
+          class="min-w-0 flex-1 truncate rounded border border-base-content/30 bg-transparent px-2 py-0.5 font-mono text-sm outline-none focus:border-primary"
           placeholder={basenameOf(writState.project.root)}
           bind:value={renameValue}
           onkeydown={(e) => {
@@ -104,7 +104,7 @@
         <button
           type="button"
           class="shrink-0 cursor-pointer truncate font-mono text-lg hover:opacity-100"
-          class:opacity-60={usingFallback}
+          class:opacity-50={usingFallback}
           class:opacity-80={!usingFallback}
           title="Edit project name"
           onclick={startRename}
