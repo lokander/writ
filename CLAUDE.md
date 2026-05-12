@@ -40,7 +40,8 @@ bin/writ-dev <args>      # same, runnable from any cwd (testing findProjectRoot)
 
 npm run sqlite:rebuild   # force-rebuild better-sqlite3 for Electron's ABI (rarely needed)
 
-npm run build            # typecheck then electron-vite build (out/)
+npm run build            # typecheck → electron-vite build → build:cli (out/)
+npm run build:cli        # bundle the CLI via build/vite.cli.config.ts
 npm run build:unpack     # build + electron-builder --dir (no installer)
 npm run build:linux      # AppImage + snap + deb
 npm run build:mac        # dmg
@@ -87,11 +88,11 @@ The CLI and MCP server are Node entry points; do not import Electron APIs from t
 
 - **phosphor-svelte icons use the `Icon` suffix.** Always import the suffixed names (`PlusIcon`, `XIcon`, `LockSimpleIcon`), not the bare ones (`Plus`, `X`, `LockSimple`). The un-suffixed exports still work but are deprecated and will warn in editor tooling. The package README also recommends per-icon imports (`import PlusIcon from "phosphor-svelte/lib/PlusIcon"`) for faster compilation, but we use named imports from the package root for now — fine until compile time becomes a real pain point.
 
-- **Drag-and-drop goes through `lib/dnd.ts`, not pragmatic-drag-and-drop directly.** The wrappers turn Pragmatic's imperative API into idiomatic Svelte actions (`use:draggable={…}`, `use:dropTarget={…}`), with a `current`-closure ref so action params can change after mount without going stale. Extend the wrappers when adding new dnd behavior (closest-edge hints, custom previews, etc.) — don't call Pragmatic directly from components.
+- **Drag-and-drop goes through `lib/dnd/dnd.ts`, not pragmatic-drag-and-drop directly.** The wrappers turn Pragmatic's imperative API into idiomatic Svelte actions (`use:draggable={…}`, `use:dropTarget={…}`), with a `current`-closure ref so action params can change after mount without going stale. Extend the wrappers when adding new dnd behavior (closest-edge hints, custom previews, etc.) — don't call Pragmatic directly from components.
 
 - **CLI commands open the project DB through `withProjectDb`.** `src/cli/context.ts` exports `withProjectDb<T>(fn: ({ db, root }) => T): T` — handles project resolution, error mapping (via `handleCliError` → `process.exit(1)`), and DB close in `finally`. Always use it from a new subcommand instead of calling `resolveProjectDb()` directly; otherwise it's easy to forget the close on an error path. The MCP server has its own `withDb` shim playing the same role for tool handlers.
 
-- **Confirmation prompts go through `<ConfirmDialog>`.** `lib/ConfirmDialog.svelte` is portaled (via `lib/portal.ts`) above the modal layer (`z-[1100]`), supports a `danger` variant, handles Esc/Enter shortcuts, and stops keydown propagation so the underlying modal's handler doesn't double-fire. Any new "are you sure?" flow — delete, discard, irreversible action — reuses this rather than rolling inline UI or calling `window.confirm`.
+- **Confirmation prompts go through `<ConfirmDialog>`.** `lib/modal/ConfirmDialog.svelte` is portaled (via `lib/portal.ts`) above the modal layer (`z-[1100]`), supports a `danger` variant, handles Esc/Enter shortcuts, and stops keydown propagation so the underlying modal's handler doesn't double-fire. Any new "are you sure?" flow — delete, discard, irreversible action — reuses this rather than rolling inline UI or calling `window.confirm`.
 
 - **Mutating CLI / MCP entry points must opt into the desktop liveness ping.** `withProjectDb` (CLI, `src/cli/context.ts`) and `withDb` (MCP, `src/mcp/tools.ts`) accept `{ notify?: boolean }`; passing `notify: true` fires `pingDesktopApp({ root })` from `src/shared/desktop-ping.ts` after `fn` returns successfully, so an open desktop app refreshes immediately. Mutating call sites (`task add/move/edit/rm`, `project rename`, `create_task`/`update_task`/`move_task`/`delete_task`) MUST pass it; read-only paths leave it off. The Electron main process has the matching `fs.watch` fallback so missed pings still surface, but skipping `notify` on a mutation regresses the live-update UX without any test catching it. Renderer-side: subscribe via `window.api.events.onProjectChanged` and call `writState.loadAll({ silent: true })` to avoid the loading-screen flicker.
 
