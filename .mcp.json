@@ -15,7 +15,7 @@
     "sqlite": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "mcp-server-sqlite-npx", "/home/lok/projects/writ/.writ/writ.db"],
+      "args": ["-y", "mcp-server-sqlite-npx", "./.writ/writ.db"],
       "env": {}
     },
     "writ": {

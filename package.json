@@ -1,9 +1,9 @@
 {
   "name": "writ",
   "version": "1.0.0",
-  "description": "An Electron application with Svelte and TypeScript",
+  "description": "A repo-local agent-friendly glorified TODO app.",
   "main": "./out/main/index.js",
-  "author": "example.com",
+  "author": "Fredrik Messelt Lokander",
   "homepage": "https://github.com/lokander/writ",
   "repository": {
     "type": "git",
@@ -12,6 +12,7 @@
   "bugs": {
     "url": "https://github.com/lokander/writ/issues"
   },
+  "license": "MIT",
   "scripts": {
     "format": "prettier --plugin prettier-plugin-svelte --write .",
     "lint": "eslint --cache .",

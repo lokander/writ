@@ -235,3 +235,7 @@ npm run build:linux       # pacman package
 Tests live next to source as `*.test.ts`. They run under Electron-as-Node (same as the CLI and MCP), so they share the app's `better-sqlite3` ABI — no per-context rebuilds. Run `npm test` once or `npm run test:watch` in a side terminal.
 
 For working in this repo with Claude Code, see [`CLAUDE.md`](./CLAUDE.md) — conventions, hook setup, and project-specific gotchas.
+
+## License
+
+MIT. See [`LICENSE`](./LICENSE).
