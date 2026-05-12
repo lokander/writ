@@ -24,10 +24,6 @@ const COLUMNS: Column[] = [
   { id: "col-done", name: "Done", position: 4000 },
 ];
 
-const COLUMN_NAME_BY_ID: Record<string, string> = Object.fromEntries(
-  COLUMNS.map((c) => [c.id, c.name]),
-);
-
 function mountListView(
   overrides: Record<string, unknown> = {},
 ): ReturnType<typeof render<typeof ListView>> {
@@ -38,9 +34,6 @@ function mountListView(
     filtersActive: false,
     activeColumnId: "col-todo",
     childrenByParent: {} as Record<string, Task[]>,
-    childCount: {} as Record<string, number>,
-    columnNameById: COLUMN_NAME_BY_ID,
-    colorByTag: {} as Record<string, string | null>,
     onTaskClick: vi.fn(),
     onTaskContextMenu: vi.fn(),
     contextMenuTaskId: null,
@@ -120,7 +113,6 @@ describe("ListView hierarchical render", () => {
       allTasks: [parent, child],
       visibleTasks: [parent, child],
       childrenByParent: { p1: [child] },
-      childCount: { p1: 1 },
     });
 
     // Parent renders at depth 0 (no inline indent).
@@ -149,7 +141,6 @@ describe("ListView hierarchical render", () => {
       allTasks: [parent, child],
       visibleTasks: [parent, child],
       childrenByParent: { p1: [child] },
-      childCount: { p1: 1 },
     });
 
     const childCard = screen.getByText("Wandering child").closest("button")!;
@@ -170,7 +161,6 @@ describe("ListView hierarchical render", () => {
       allTasks: [parent, child],
       visibleTasks: [parent, child],
       childrenByParent: { p1: [child] },
-      childCount: { p1: 1 },
     });
 
     const childCard = screen.getByText("Aligned child").closest("button")!;
@@ -197,7 +187,6 @@ describe("ListView flat render (filter active)", () => {
       visibleTasks: [parent, child],
       filtersActive: true,
       childrenByParent: { p1: [child] },
-      childCount: { p1: 1 },
     });
 
     const childCard = screen.getByText("Child").closest("button")!;

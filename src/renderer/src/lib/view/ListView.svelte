@@ -4,6 +4,7 @@
 
   import type { Column, Task } from "../../../../shared/types";
   import type { Snippet } from "../search";
+  import { writDerived } from "../derived.svelte";
   import Highlighted from "../Highlighted.svelte";
   import { PRIORITY_BORDER_CLASS } from "../priority-color";
   import TagChip from "../chip/TagChip.svelte";
@@ -23,9 +24,6 @@
     /** Bindable so the choice survives view toggles (App owns it). */
     activeColumnId: string | null;
     childrenByParent: Record<string, Task[]>;
-    childCount: Record<string, number>;
-    columnNameById: Record<string, string>;
-    colorByTag: Record<string, string | null>;
     /** Title-field match indices per task, for inline highlighting. null /
      *  omitted = no query active. */
     titleMatchesById?: Record<string, ReadonlyArray<RangeTuple>> | null;
@@ -47,9 +45,6 @@
     filtersActive,
     activeColumnId = $bindable(),
     childrenByParent,
-    childCount,
-    columnNameById,
-    colorByTag,
     titleMatchesById = null,
     descSnippetById = null,
     onTaskClick,
@@ -112,7 +107,7 @@
 </div>
 
 {#snippet taskNode(task: Task, parentColumnId: string | null, depth: number, recurse: boolean)}
-  {@const n = childCount[task.id] ?? 0}
+  {@const n = writDerived.childCount[task.id] ?? 0}
   {@const showColumnBadge =
     depth > 0 && parentColumnId !== null && task.columnId !== parentColumnId}
   <button
@@ -149,10 +144,12 @@
       </span>
     {/if}
     {#each task.tags as tag (tag)}
-      <TagChip name={tag} color={colorByTag[tag] ?? null} />
+      <TagChip name={tag} color={writDerived.colorByTag[tag] ?? null} />
     {/each}
     {#if showColumnBadge}
-      <span class="badge badge-outline badge-sm">{columnNameById[task.columnId] ?? "?"}</span>
+      <span class="badge badge-outline badge-sm">
+        {writDerived.columnNameById[task.columnId] ?? "?"}
+      </span>
     {/if}
     {#if n > 0}
       <span class="badge badge-sm" title="{n} subtask{n === 1 ? '' : 's'}">{n}</span>

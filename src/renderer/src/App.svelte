@@ -23,7 +23,6 @@
   import TaskEditModal from "./lib/modal/TaskEditModal.svelte";
   import ToastStack from "./lib/toast/ToastStack.svelte";
   import { writState } from "./lib/state.svelte";
-  import { indexTags } from "./lib/tag-color";
   import { toast } from "./lib/toast/toast.svelte";
   import type { Priority, Task } from "../../shared/types";
 
@@ -218,23 +217,6 @@
     }
     return map;
   });
-
-  const childCount = $derived.by(() => {
-    const counts: Record<string, number> = {};
-    for (const t of writState.tasks) {
-      if (t.parentId === null) continue;
-      counts[t.parentId] = (counts[t.parentId] ?? 0) + 1;
-    }
-    return counts;
-  });
-
-  const columnNameById = $derived.by(() => {
-    const m: Record<string, string> = {};
-    for (const c of writState.columns) m[c.id] = c.name;
-    return m;
-  });
-
-  const colorByTag = $derived(indexTags(writState.tags));
 
   // Tag chips are scoped to tags actually present in the user's current
   // view scope — kanban hides Backlog/Archived, list shows just the active
@@ -450,8 +432,6 @@
       <KanbanView
         columns={writState.columns}
         {visibleTasks}
-        {colorByTag}
-        {childCount}
         {dragEnabled}
         {titleMatchesById}
         {descSnippetById}
@@ -467,9 +447,6 @@
         {filtersActive}
         bind:activeColumnId
         {childrenByParent}
-        {childCount}
-        {columnNameById}
-        {colorByTag}
         {titleMatchesById}
         {descSnippetById}
         onTaskClick={(id) => openTaskModal(id)}

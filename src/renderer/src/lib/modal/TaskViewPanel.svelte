@@ -5,6 +5,7 @@
   import TagChip from "../chip/TagChip.svelte";
   import TaskIdChip from "../chip/TaskIdChip.svelte";
   import TaskRefRow from "../chip/TaskRefRow.svelte";
+  import { writDerived } from "../derived.svelte";
   import { renderMarkdown } from "../markdown/markdown";
   import { writState } from "../state.svelte";
   import { toast } from "../toast/toast.svelte";
@@ -13,14 +14,11 @@
     task: Task;
     parentTask: Task | null;
     dependents: Task[];
-    columnNameById: Record<string, string>;
-    colorByTag: Record<string, string | null>;
     onSwitch: (id: string) => void;
     onClose: () => void;
   }
 
-  const { task, parentTask, dependents, columnNameById, colorByTag, onSwitch, onClose }: Props =
-    $props();
+  const { task, parentTask, dependents, onSwitch, onClose }: Props = $props();
 
   // Delegated click handler for markdown-rendered task id links (see
   // `linkifyTaskIds` in `markdown.ts`). Walks up from the click target to
@@ -74,7 +72,7 @@
 
 <div class="mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
   <span class="badge badge-outline">
-    {columnNameById[task.columnId] ?? "?"}
+    {writDerived.columnNameById[task.columnId] ?? "?"}
   </span>
   <span><span class="opacity-60">Priority:</span> {PRIORITY_NAMES[task.priority]}</span>
   <span class="flex items-center gap-2">
@@ -91,7 +89,7 @@
     <span class="flex flex-wrap items-center gap-1">
       <span class="opacity-60">Tags:</span>
       {#each task.tags as tag (tag)}
-        <TagChip name={tag} color={colorByTag[tag] ?? null} />
+        <TagChip name={tag} color={writDerived.colorByTag[tag] ?? null} />
       {/each}
     </span>
   {/if}
@@ -113,7 +111,7 @@
         {#if blocker}
           <TaskRefRow
             task={blocker}
-            columnName={columnNameById[blocker.columnId] ?? "?"}
+            columnName={writDerived.columnNameById[blocker.columnId] ?? "?"}
             onClick={() => onSwitch(blocker.id)}
             muted={!task.blockedBy.includes(blockerId)}
           />
@@ -132,7 +130,7 @@
       {#each dependents as dep (dep.id)}
         <TaskRefRow
           task={dep}
-          columnName={columnNameById[dep.columnId] ?? "?"}
+          columnName={writDerived.columnNameById[dep.columnId] ?? "?"}
           onClick={() => onSwitch(dep.id)}
         />
       {/each}

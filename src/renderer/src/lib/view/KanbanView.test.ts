@@ -28,8 +28,6 @@ function mountKanban(
   return render(KanbanView, {
     columns: COLUMNS,
     visibleTasks: [] as Task[],
-    colorByTag: {} as Record<string, string | null>,
-    childCount: {} as Record<string, number>,
     dragEnabled: true,
     onTaskClick: vi.fn(),
     onTaskContextMenu: vi.fn(),
@@ -77,14 +75,20 @@ describe("KanbanView column layout", () => {
 
 describe("KanbanView card metadata", () => {
   it("renders the child-count badge only when subtasks exist", () => {
+    // childCount is derived from writState.tasks (via writDerived), so we
+    // seed three real children under the parent rather than passing a fake
+    // count — the test exercises the same code path as production.
     const parent = makeTask({ id: "p1", title: "Parent", columnId: "col-todo" });
     const lone = makeTask({ id: "l1", title: "Lone", columnId: "col-todo" });
-    seedWritState({ columns: COLUMNS, tasks: [parent, lone] });
+    const c1 = makeTask({ id: "c1", title: "C1", parentId: "p1", columnId: "col-todo" });
+    const c2 = makeTask({ id: "c2", title: "C2", parentId: "p1", columnId: "col-todo" });
+    const c3 = makeTask({ id: "c3", title: "C3", parentId: "p1", columnId: "col-todo" });
+    seedWritState({ columns: COLUMNS, tasks: [parent, lone, c1, c2, c3] });
 
-    mountKanban({
-      visibleTasks: [parent, lone],
-      childCount: { p1: 3 },
-    });
+    // visibleTasks intentionally omits the children — kanban only renders
+    // what's in visibleTasks, but the badge count comes from the derived
+    // store, which sees the full task set.
+    mountKanban({ visibleTasks: [parent, lone] });
 
     // The badge surfaces the count next to the parent.
     const parentCard = screen.getByText("Parent").closest("button")!;

@@ -6,6 +6,7 @@
 
   import type { Column, Task } from "../../../../shared/types";
   import type { Snippet } from "../search";
+  import { writDerived } from "../derived.svelte";
   import { writState } from "../state.svelte";
   import { draggable, dropTarget, monitorForElements } from "../dnd/dnd";
   import HiddenDropZone from "../dnd/HiddenDropZone.svelte";
@@ -19,10 +20,6 @@
     /** The post-filter task set. Kanban renders flat-per-column — every
      *  matching task surfaces, regardless of nesting. */
     visibleTasks: Task[];
-    colorByTag: Record<string, string | null>;
-    /** Subtask count per task id — shown as a badge so the user can see at a
-     *  glance which cards have children (visible only via the modal). */
-    childCount: Record<string, number>;
     /** False when a non-position sort is active. Disables card drag so the
      *  user doesn't reorder `position` while looking at a different sort —
      *  the move would be invisible until they switched sorts back. */
@@ -46,8 +43,6 @@
   const {
     columns,
     visibleTasks,
-    colorByTag,
-    childCount,
     dragEnabled,
     titleMatchesById = null,
     descSnippetById = null,
@@ -178,7 +173,7 @@
         }}
       >
         {#each colTasks as task (task.id)}
-          {@const n = childCount[task.id] ?? 0}
+          {@const n = writDerived.childCount[task.id] ?? 0}
           {@const parent = task.parentId ? parentOf(task.parentId) : undefined}
           <button
             type="button"
@@ -229,7 +224,7 @@
             {#if task.tags.length > 0 || n > 0}
               <div class="flex flex-wrap items-center gap-1">
                 {#each task.tags as tag (tag)}
-                  <TagChip name={tag} color={colorByTag[tag] ?? null} />
+                  <TagChip name={tag} color={writDerived.colorByTag[tag] ?? null} />
                 {/each}
                 {#if n > 0}
                   <span class="badge badge-sm" title="{n} subtask{n === 1 ? '' : 's'}">{n}</span>

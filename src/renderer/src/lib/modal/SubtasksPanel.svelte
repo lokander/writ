@@ -4,14 +4,13 @@
   import type { Task } from "../../../../shared/types";
   import TagChip from "../chip/TagChip.svelte";
   import TaskIdChip from "../chip/TaskIdChip.svelte";
+  import { writDerived } from "../derived.svelte";
 
   interface Props {
     /** Parent task — used for the new-subtask column inheritance. */
     task: Task;
     /** Direct children of `task`, freshly derived in the parent. */
     children: Task[];
-    colorByTag: Record<string, string | null>;
-    columnNameById: Record<string, string>;
     /** When true, the parent task is gone (CLI delete mid-session). Disables
      *  the "Add subtask" affordance so the user can't orphan rows. */
     taskGone: boolean;
@@ -32,8 +31,6 @@
   let {
     task,
     children,
-    colorByTag,
-    columnNameById,
     taskGone,
     isAdding = $bindable(),
     newTitle = $bindable(),
@@ -75,11 +72,11 @@
           <TaskIdChip id={child.id} />
           <span class="flex-1">{child.title}</span>
           {#each child.tags as tag (tag)}
-            <TagChip name={tag} color={colorByTag[tag] ?? null} />
+            <TagChip name={tag} color={writDerived.colorByTag[tag] ?? null} />
           {/each}
           {#if showBadge}
             <span class="badge badge-outline badge-sm">
-              {columnNameById[child.columnId] ?? "?"}
+              {writDerived.columnNameById[child.columnId] ?? "?"}
             </span>
           {/if}
         </button>

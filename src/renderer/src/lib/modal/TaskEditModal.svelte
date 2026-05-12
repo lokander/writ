@@ -11,7 +11,6 @@
     intersectFlags,
     taskToFields,
   } from "./diff-task";
-  import { indexTags } from "../tag-color";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import ConflictDialog from "./ConflictDialog.svelte";
   import Modal from "./Modal.svelte";
@@ -144,14 +143,6 @@
 
   const dependents = $derived(writState.tasks.filter((t) => t.dependsOn.includes(task.id)));
   const children = $derived(writState.tasks.filter((t) => t.parentId === task.id));
-
-  const columnNameById = $derived.by(() => {
-    const m: Record<string, string> = {};
-    for (const c of writState.columns) m[c.id] = c.name;
-    return m;
-  });
-
-  const colorByTag = $derived(indexTags(writState.tags));
 
   function enterEdit(): void {
     // Capture a fresh original AT edit-start. Re-entering edit after a
@@ -370,15 +361,7 @@
     {/if}
 
     {#if mode === "view"}
-      <TaskViewPanel
-        {task}
-        {parentTask}
-        {dependents}
-        {columnNameById}
-        {colorByTag}
-        {onSwitch}
-        {onClose}
-      />
+      <TaskViewPanel {task} {parentTask} {dependents} {onSwitch} {onClose} />
     {:else}
       <TaskEditPanel
         {task}
@@ -396,8 +379,6 @@
     <SubtasksPanel
       {task}
       {children}
-      {colorByTag}
-      {columnNameById}
       {taskGone}
       bind:isAdding={addingSubtask}
       bind:newTitle={newSubtaskTitle}
