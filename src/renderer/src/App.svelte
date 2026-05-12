@@ -1,17 +1,13 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import type { RangeTuple } from "fuse.js";
 
   import AddTaskModal from "./lib/modal/AddTaskModal.svelte";
   import AppBar, { VIEWS, type View } from "./lib/bar/AppBar.svelte";
   import FilterBar from "./lib/bar/FilterBar.svelte";
-  import { matchesFilters as taskMatchesFilters } from "./lib/filter";
-  import { SORT_MODES, sortTasks, type SortMode } from "../../shared/types";
   import ConfirmDialog from "./lib/modal/ConfirmDialog.svelte";
   import EmptyState from "./lib/view/EmptyState.svelte";
   import KanbanView from "./lib/view/KanbanView.svelte";
   import ListView from "./lib/view/ListView.svelte";
-  import { fuzzySearch, makeSnippet, type Snippet } from "./lib/search";
   import TaskContextMenu from "./lib/picker/TaskContextMenu.svelte";
   import TaskEditModal from "./lib/modal/TaskEditModal.svelte";
   import ToastStack from "./lib/toast/ToastStack.svelte";
@@ -21,7 +17,6 @@
   import type { Priority, Task } from "../../shared/types";
 
   const VIEW_STORAGE_KEY = "writ:view";
-  const SORT_STORAGE_KEY = "writ:sort";
 
   let activeColumnId = $state<string | null>(null);
 
@@ -41,8 +36,6 @@
 
   let showAddModal = $state(false);
   let view = $state<View>("kanban");
-  let sortMode = $state<SortMode>("position");
-  const dragEnabled = $derived(sortMode === "position");
 
   // Right-click context menu. Holds the target task and the cursor position
   // captured at right-click time. Cleared on action / outside-click / Esc.
@@ -94,77 +87,6 @@
     }
   });
 
-  // And for the sort mode.
-  $effect(() => {
-    try {
-      localStorage.setItem(SORT_STORAGE_KEY, sortMode);
-    } catch {
-      // ignore
-    }
-  });
-
-  // Sort first so both the flat (kanban) and hierarchical (list) paths see
-  // siblings in the chosen order. childrenByParent is built from this same
-  // sorted array so children appear in priority/updated/created order under
-  // their parent without a second sort pass.
-  const sortedTasks = $derived(sortTasks(writState.tasks, sortMode));
-
-  // When a query is active, swap position/sort order for Fuse rank order so
-  // each kanban column shows its matching cards best-first. Tag/priority/state
-  // filters compose on top — they're a per-task predicate, Fuse isn't, so
-  // the search runs at the collection level here rather than via matchesFilters.
-  const searchResults = $derived(fuzzySearch(sortedTasks, filters.query));
-
-  const visibleTasks = $derived.by(() => {
-    const ranked = searchResults ? searchResults.map((r) => r.task) : sortedTasks;
-    return filters.active ? ranked.filter((t) => taskMatchesFilters(t, filters.asState)) : ranked;
-  });
-
-  // Title-field match indices per task, for inline <Highlighted /> in the
-  // task cards. null when no query is active so consumers can skip the
-  // segment-splitting work entirely. Description matches also drive ranking
-  // but aren't rendered in cards (description isn't shown there).
-  const titleMatchesById = $derived.by<Record<string, ReadonlyArray<RangeTuple>> | null>(() => {
-    if (!searchResults) return null;
-    const m: Record<string, ReadonlyArray<RangeTuple>> = {};
-    for (const r of searchResults) {
-      for (const match of r.matches) {
-        if (match.key === "title") {
-          m[r.task.id] = match.indices;
-          break;
-        }
-      }
-    }
-    return m;
-  });
-
-  // Description-field snippet per task. Built around the first description
-  // match so the card can answer "why did this hit?" inline — title-only
-  // matches don't get a snippet (the title highlight already explains it).
-  const descSnippetById = $derived.by<Record<string, Snippet> | null>(() => {
-    if (!searchResults) return null;
-    const m: Record<string, Snippet> = {};
-    for (const r of searchResults) {
-      for (const match of r.matches) {
-        if (match.key === "description" && match.value) {
-          const s = makeSnippet(match.value, match.indices);
-          if (s) m[r.task.id] = s;
-          break;
-        }
-      }
-    }
-    return m;
-  });
-
-  const childrenByParent = $derived.by(() => {
-    const map: Record<string, Task[]> = {};
-    for (const t of sortedTasks) {
-      if (t.parentId === null) continue;
-      (map[t.parentId] ??= []).push(t);
-    }
-    return map;
-  });
-
   // Tag chips are scoped to tags actually present in the user's current
   // view scope — kanban hides Backlog/Archived, list shows just the active
   // tab's column. Filtering by tag still narrows within that scope, but
@@ -200,12 +122,6 @@
     try {
       const v = localStorage.getItem(VIEW_STORAGE_KEY);
       if (v && (VIEWS as string[]).includes(v)) view = v as View;
-    } catch {
-      // ignore
-    }
-    try {
-      const s = localStorage.getItem(SORT_STORAGE_KEY);
-      if (s && (SORT_MODES as readonly string[]).includes(s)) sortMode = s as SortMode;
     } catch {
       // ignore
     }
@@ -322,8 +238,6 @@
   <AppBar
     {view}
     {onViewChange}
-    {sortMode}
-    onSortChange={(m) => (sortMode = m)}
     onOpenProject={openProjectFolder}
     onNewTask={() => (showAddModal = true)}
   />
@@ -340,10 +254,6 @@
     {#if view === "kanban"}
       <KanbanView
         columns={writState.columns}
-        {visibleTasks}
-        {dragEnabled}
-        {titleMatchesById}
-        {descSnippetById}
         onTaskClick={(id) => openTaskModal(id)}
         onTaskContextMenu={openContextMenu}
         contextMenuTaskId={contextMenuFor?.taskId ?? null}
@@ -351,13 +261,7 @@
     {:else}
       <ListView
         columns={writState.columns}
-        allTasks={sortedTasks}
-        {visibleTasks}
-        filtersActive={filters.active}
         bind:activeColumnId
-        {childrenByParent}
-        {titleMatchesById}
-        {descSnippetById}
         onTaskClick={(id) => openTaskModal(id)}
         onTaskContextMenu={openContextMenu}
         contextMenuTaskId={contextMenuFor?.taskId ?? null}

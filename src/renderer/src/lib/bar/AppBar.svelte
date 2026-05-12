@@ -15,18 +15,17 @@
   } from "phosphor-svelte";
 
   import type { SortMode } from "../../../../shared/types";
+  import { search } from "../search.svelte";
   import { writState } from "../state.svelte";
 
   interface Props {
     view: View;
     onViewChange: (v: View) => void;
-    sortMode: SortMode;
-    onSortChange: (m: SortMode) => void;
     onOpenProject: () => void;
     onNewTask: () => void;
   }
 
-  let { view, onViewChange, sortMode, onSortChange, onOpenProject, onNewTask }: Props = $props();
+  let { view, onViewChange, onOpenProject, onNewTask }: Props = $props();
 
   // `position` is the implicit default — drag-and-drop writes to it and it
   // matches the underlying row order. We hide it from the menu and call it
@@ -157,7 +156,7 @@
       <div
         class={[
           "flex h-6 items-center rounded-field text-xs",
-          sortMode === "position" ? "bg-base-300" : "bg-primary/15 text-primary",
+          search.sortMode === "position" ? "bg-base-300" : "bg-primary/15 text-primary",
         ]}
       >
         <div class="dropdown dropdown-end">
@@ -166,13 +165,13 @@
             tabindex="0"
             class={[
               "flex h-6 items-center gap-1 rounded-l-field px-2 hover:bg-base-content/10",
-              sortMode === "position" && "rounded-r-field",
+              search.sortMode === "position" && "rounded-r-field",
             ]}
             title="Sort cards by…"
             aria-label="Sort mode"
           >
             <SortAscendingIcon size={14} weight="bold" />
-            <span class="hidden sm:inline">Sorting: {labelFor(sortMode)}</span>
+            <span class="hidden sm:inline">Sorting: {labelFor(search.sortMode)}</span>
           </button>
           <ul
             tabindex="-1"
@@ -182,9 +181,9 @@
               <li>
                 <button
                   type="button"
-                  class:menu-active={sortMode === m}
+                  class:menu-active={search.sortMode === m}
                   onclick={(e) => {
-                    onSortChange(m);
+                    search.sortMode = m;
                     // Daisy dropdowns stay open as long as any element
                     // inside has focus. Clicking a menu item keeps focus
                     // on it, so the dropdown lingers; blur to drop focus
@@ -198,13 +197,13 @@
             {/each}
           </ul>
         </div>
-        {#if sortMode !== "position"}
+        {#if search.sortMode !== "position"}
           <button
             type="button"
             class="flex h-6 items-center rounded-r-field px-1.5 hover:bg-base-content/10"
             title="Clear sort (return to default)"
             aria-label="Clear sort"
-            onclick={() => onSortChange("position")}
+            onclick={() => (search.sortMode = "position")}
           >
             <XIcon size={12} weight="bold" />
           </button>

@@ -11,9 +11,10 @@
 import { render, screen, within } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Column, Task } from "../../../../shared/types";
+import type { Column } from "../../../../shared/types";
+import { filters } from "../filters.svelte";
 import { makeTask } from "../test-fixtures";
-import { installApiStub, seedWritState } from "../test-helpers";
+import { installApiStub, resetFilters, resetSearch, seedWritState } from "../test-helpers";
 
 import ListView from "./ListView.svelte";
 
@@ -29,11 +30,7 @@ function mountListView(
 ): ReturnType<typeof render<typeof ListView>> {
   return render(ListView, {
     columns: COLUMNS,
-    allTasks: [] as Task[],
-    visibleTasks: [] as Task[],
-    filtersActive: false,
     activeColumnId: "col-todo",
-    childrenByParent: {} as Record<string, Task[]>,
     onTaskClick: vi.fn(),
     onTaskContextMenu: vi.fn(),
     contextMenuTaskId: null,
@@ -43,6 +40,10 @@ function mountListView(
 
 beforeEach(() => {
   installApiStub();
+  // Reset singletons so a filter / sortMode set in one test doesn't bleed
+  // into the next via the module-level instance.
+  resetFilters();
+  resetSearch();
   seedWritState({ columns: COLUMNS, tasks: [] });
 });
 
@@ -61,10 +62,9 @@ describe("ListView tab counts", () => {
       columnId: "col-todo",
     });
     const doingTop = makeTask({ id: "d1", title: "Doing top", columnId: "col-doing" });
-    const all = [t1, t2, child, doingTop];
-    seedWritState({ columns: COLUMNS, tasks: all });
+    seedWritState({ columns: COLUMNS, tasks: [t1, t2, child, doingTop] });
 
-    mountListView({ allTasks: all, visibleTasks: all });
+    mountListView();
 
     // Todo has 2 top-level (child doesn't count toward the badge),
     // Doing has 1, Backlog and Done are 0.
@@ -75,9 +75,11 @@ describe("ListView tab counts", () => {
   });
 
   it("counts every matching task per column when a filter is active", () => {
-    // With filtersActive, ListView counts post-filter `visibleTasks` (any
+    // With filters active, ListView counts post-filter `visibleTasks` (any
     // depth) instead of just top-level. So a child in the visible set
-    // contributes to its column's count.
+    // contributes to its column's count. We flip a real priority filter
+    // (which both tasks match by default) instead of faking the prop —
+    // the test exercises the same code path as production.
     const top = makeTask({ id: "t1", title: "Top", columnId: "col-todo" });
     const child = makeTask({
       id: "c1",
@@ -86,12 +88,9 @@ describe("ListView tab counts", () => {
       columnId: "col-todo",
     });
     seedWritState({ columns: COLUMNS, tasks: [top, child] });
+    filters.priorities = [2];
 
-    mountListView({
-      allTasks: [top, child],
-      visibleTasks: [top, child],
-      filtersActive: true,
-    });
+    mountListView();
 
     const todoTab = screen.getByRole("tab", { name: /Todo/ });
     expect(within(todoTab).getByText("2")).toBeInTheDocument();
@@ -109,11 +108,7 @@ describe("ListView hierarchical render", () => {
     });
     seedWritState({ columns: COLUMNS, tasks: [parent, child] });
 
-    mountListView({
-      allTasks: [parent, child],
-      visibleTasks: [parent, child],
-      childrenByParent: { p1: [child] },
-    });
+    mountListView();
 
     // Parent renders at depth 0 (no inline indent).
     const parentCard = screen.getByText("Parent").closest("button")!;
@@ -137,11 +132,7 @@ describe("ListView hierarchical render", () => {
     });
     seedWritState({ columns: COLUMNS, tasks: [parent, child] });
 
-    mountListView({
-      allTasks: [parent, child],
-      visibleTasks: [parent, child],
-      childrenByParent: { p1: [child] },
-    });
+    mountListView();
 
     const childCard = screen.getByText("Wandering child").closest("button")!;
     expect(within(childCard).getByText("Done")).toBeInTheDocument();
@@ -157,11 +148,7 @@ describe("ListView hierarchical render", () => {
     });
     seedWritState({ columns: COLUMNS, tasks: [parent, child] });
 
-    mountListView({
-      allTasks: [parent, child],
-      visibleTasks: [parent, child],
-      childrenByParent: { p1: [child] },
-    });
+    mountListView();
 
     const childCard = screen.getByText("Aligned child").closest("button")!;
     // No "Todo" / "Done" badge inside the child card — that badge only
@@ -181,13 +168,12 @@ describe("ListView flat render (filter active)", () => {
       columnId: "col-todo",
     });
     seedWritState({ columns: COLUMNS, tasks: [parent, child] });
+    // Activate a real priority filter so the flat-render branch fires the
+    // same way it does in production — no query, so titles stay un-
+    // highlighted and the `getByText` lookup below is stable.
+    filters.priorities = [2];
 
-    mountListView({
-      allTasks: [parent, child],
-      visibleTasks: [parent, child],
-      filtersActive: true,
-      childrenByParent: { p1: [child] },
-    });
+    mountListView();
 
     const childCard = screen.getByText("Child").closest("button")!;
     // Flat render: child sits at depth 0 too, no margin-left indent.

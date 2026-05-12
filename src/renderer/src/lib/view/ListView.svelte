@@ -1,10 +1,10 @@
 <script lang="ts">
   import { LockSimpleIcon } from "phosphor-svelte";
-  import type { RangeTuple } from "fuse.js";
 
   import type { Column, Task } from "../../../../shared/types";
-  import type { Snippet } from "../search";
   import { writDerived } from "../derived.svelte";
+  import { filters } from "../filters.svelte";
+  import { search } from "../search.svelte";
   import Highlighted from "../Highlighted.svelte";
   import { PRIORITY_BORDER_CLASS } from "../priority-color";
   import TagChip from "../chip/TagChip.svelte";
@@ -12,24 +12,8 @@
 
   interface Props {
     columns: Column[];
-    /** Full (pre-filter) task set, already sorted by the active sort mode.
-     *  Drives both tab counts and the hierarchical no-filter render — we
-     *  read from this instead of `allTasks` directly so the sort
-     *  applies in list view too. */
-    allTasks: Task[];
-    /** Post-filter, post-sort task set. Used in flat-render mode (filters
-     *  active) for the cards shown in the active column. */
-    visibleTasks: Task[];
-    filtersActive: boolean;
     /** Bindable so the choice survives view toggles (App owns it). */
     activeColumnId: string | null;
-    childrenByParent: Record<string, Task[]>;
-    /** Title-field match indices per task, for inline highlighting. null /
-     *  omitted = no query active. */
-    titleMatchesById?: Record<string, ReadonlyArray<RangeTuple>> | null;
-    /** Description-match snippet per task — rendered inline after the title
-     *  so the user sees what hit in body. Title-only matches don't appear. */
-    descSnippetById?: Record<string, Snippet> | null;
     onTaskClick: (id: string) => void;
     onTaskContextMenu: (id: string, event: MouseEvent) => void;
     /** Id of the task whose context menu is currently open, if any. The
@@ -40,13 +24,7 @@
 
   let {
     columns,
-    allTasks,
-    visibleTasks,
-    filtersActive,
     activeColumnId = $bindable(),
-    childrenByParent,
-    titleMatchesById = null,
-    descSnippetById = null,
     onTaskClick,
     onTaskContextMenu,
     contextMenuTaskId,
@@ -57,10 +35,10 @@
   // tasks only (matches the hierarchical render below).
   const tasksByColumn = $derived.by(() => {
     const counts: Record<string, number> = {};
-    if (filtersActive) {
-      for (const t of visibleTasks) counts[t.columnId] = (counts[t.columnId] ?? 0) + 1;
+    if (filters.active) {
+      for (const t of search.visibleTasks) counts[t.columnId] = (counts[t.columnId] ?? 0) + 1;
     } else {
-      for (const t of allTasks) {
+      for (const t of search.sortedTasks) {
         if (t.parentId !== null) continue;
         counts[t.columnId] = (counts[t.columnId] ?? 0) + 1;
       }
@@ -73,10 +51,10 @@
   // CLI's flat-render-when-filtered behavior).
   const tasksInActiveColumn = $derived.by(() => {
     if (activeColumnId === null) return [];
-    if (filtersActive) {
-      return visibleTasks.filter((t) => t.columnId === activeColumnId);
+    if (filters.active) {
+      return search.visibleTasks.filter((t) => t.columnId === activeColumnId);
     }
-    return allTasks.filter((t) => t.parentId === null && t.columnId === activeColumnId);
+    return search.sortedTasks.filter((t) => t.parentId === null && t.columnId === activeColumnId);
   });
 </script>
 
@@ -98,10 +76,10 @@
 
 <div class="flex flex-1 flex-col gap-2 overflow-y-auto p-4">
   {#each tasksInActiveColumn as task (task.id)}
-    {@render taskNode(task, null, 0, !filtersActive)}
+    {@render taskNode(task, null, 0, !filters.active)}
   {:else}
     <p class="text-sm italic opacity-40">
-      {filtersActive ? "No tasks match the active filters." : "No tasks here."}
+      {filters.active ? "No tasks match the active filters." : "No tasks here."}
     </p>
   {/each}
 </div>
@@ -126,10 +104,10 @@
     <TaskIdChip id={task.id} />
     <div class="flex min-w-0 flex-1 items-baseline gap-3">
       <span>
-        <Highlighted text={task.title} indices={titleMatchesById?.[task.id]} />
+        <Highlighted text={task.title} indices={search.titleMatchesById?.[task.id]} />
       </span>
-      {#if descSnippetById?.[task.id]}
-        {@const snip = descSnippetById[task.id]}
+      {#if search.descSnippetById?.[task.id]}
+        {@const snip = search.descSnippetById[task.id]}
         <span class="truncate text-xs italic opacity-60">
           <Highlighted text={snip.text} indices={snip.indices} />
         </span>
@@ -156,7 +134,7 @@
     {/if}
   </button>
   {#if recurse}
-    {#each childrenByParent[task.id] ?? [] as child (child.id)}
+    {#each search.childrenByParent[task.id] ?? [] as child (child.id)}
       {@render taskNode(child, task.columnId, depth + 1, true)}
     {/each}
   {/if}

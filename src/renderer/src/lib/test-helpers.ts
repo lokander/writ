@@ -14,6 +14,7 @@ import { vi, type Mock } from "vitest";
 
 import type { Column, ProjectInfo, Tag, Task, UpdateTaskResult } from "../../../shared/types";
 import { filters } from "./filters.svelte";
+import { search } from "./search.svelte";
 import { writState } from "./state.svelte";
 
 export interface ApiStub {
@@ -94,5 +95,17 @@ export function resetFilters(): void {
     localStorage.removeItem("writ:filter");
   } catch {
     // ignore — happy-dom always provides localStorage but defend anyway.
+  }
+}
+
+/** Reset the search singleton back to the default sort. Mirrors
+ *  `resetFilters()`: clears localStorage too so a sortMode set in one
+ *  test doesn't bleed into the next file's hydration. */
+export function resetSearch(): void {
+  search.sortMode = "position";
+  try {
+    localStorage.removeItem("writ:sort");
+  } catch {
+    // ignore
   }
 }

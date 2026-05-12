@@ -2,15 +2,15 @@
 //
 // KanbanView rendering. Verifies tasks land under the right column,
 // child-count badges and parent breadcrumbs render only when relevant,
-// and `dragEnabled={false}` keeps Pragmatic from attaching the draggable
-// listener.
+// and a non-position sort mode disables the Pragmatic draggable wiring.
 
 import { render, screen, within } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Column, Task } from "../../../../shared/types";
+import type { Column } from "../../../../shared/types";
+import { search } from "../search.svelte";
 import { makeTask } from "../test-fixtures";
-import { installApiStub, seedWritState } from "../test-helpers";
+import { installApiStub, resetFilters, resetSearch, seedWritState } from "../test-helpers";
 
 import KanbanView from "./KanbanView.svelte";
 
@@ -27,8 +27,6 @@ function mountKanban(
 ): ReturnType<typeof render<typeof KanbanView>> {
   return render(KanbanView, {
     columns: COLUMNS,
-    visibleTasks: [] as Task[],
-    dragEnabled: true,
     onTaskClick: vi.fn(),
     onTaskContextMenu: vi.fn(),
     contextMenuTaskId: null,
@@ -38,6 +36,10 @@ function mountKanban(
 
 beforeEach(() => {
   installApiStub();
+  // Reset singletons so a sortMode / query set in one test doesn't bleed
+  // into the next via the module-level instance.
+  resetFilters();
+  resetSearch();
   seedWritState({ columns: COLUMNS, tasks: [] });
 });
 
@@ -51,7 +53,7 @@ describe("KanbanView column layout", () => {
     const doing = makeTask({ title: "Doing card", columnId: "col-doing" });
     seedWritState({ columns: COLUMNS, tasks: [todo, doing] });
 
-    mountKanban({ visibleTasks: [todo, doing] });
+    mountKanban();
 
     // The Todo heading and the "Todo card" should share an ancestor that
     // doesn't include the Doing card — i.e. each lives in its own column
@@ -85,10 +87,7 @@ describe("KanbanView card metadata", () => {
     const c3 = makeTask({ id: "c3", title: "C3", parentId: "p1", columnId: "col-todo" });
     seedWritState({ columns: COLUMNS, tasks: [parent, lone, c1, c2, c3] });
 
-    // visibleTasks intentionally omits the children — kanban only renders
-    // what's in visibleTasks, but the badge count comes from the derived
-    // store, which sees the full task set.
-    mountKanban({ visibleTasks: [parent, lone] });
+    mountKanban();
 
     // The badge surfaces the count next to the parent.
     const parentCard = screen.getByText("Parent").closest("button")!;
@@ -109,7 +108,7 @@ describe("KanbanView card metadata", () => {
     });
     seedWritState({ columns: COLUMNS, tasks: [parent, child] });
 
-    mountKanban({ visibleTasks: [parent, child] });
+    mountKanban();
 
     // The subtask card prefixes its parent's title with the breadcrumb arrow.
     const childCard = screen.getByText("Drop session middleware").closest("button")!;
@@ -120,7 +119,7 @@ describe("KanbanView card metadata", () => {
     const top = makeTask({ id: "t1", title: "Standalone", columnId: "col-todo" });
     seedWritState({ columns: COLUMNS, tasks: [top] });
 
-    mountKanban({ visibleTasks: [top] });
+    mountKanban();
 
     const card = screen.getByText("Standalone").closest("button")!;
     // The breadcrumb element has a `title="Subtask of …"` attribute, which
@@ -131,22 +130,23 @@ describe("KanbanView card metadata", () => {
 
 describe("KanbanView drag enable/disable", () => {
   // Pragmatic's draggable() adds a `draggable="true"` attribute to the
-  // element when it attaches. With dragEnabled=false, our dnd wrapper
+  // element when it attaches. With a non-position sort, our dnd wrapper
   // skips the attach entirely → the attribute stays absent.
-  it("cards are draggable when dragEnabled=true", () => {
+  it("cards are draggable in the default (position) sort", () => {
     const task = makeTask({ id: "t1", title: "Drag me", columnId: "col-todo" });
     seedWritState({ columns: COLUMNS, tasks: [task] });
 
-    mountKanban({ visibleTasks: [task], dragEnabled: true });
+    mountKanban();
     const card = screen.getByText("Drag me").closest("button")!;
     expect(card.getAttribute("draggable")).toBe("true");
   });
 
-  it("cards are not draggable when dragEnabled=false", () => {
+  it("cards are not draggable when a non-position sort is active", () => {
     const task = makeTask({ id: "t1", title: "Drag me", columnId: "col-todo" });
     seedWritState({ columns: COLUMNS, tasks: [task] });
+    search.sortMode = "priority";
 
-    mountKanban({ visibleTasks: [task], dragEnabled: false });
+    mountKanban();
     const card = screen.getByText("Drag me").closest("button")!;
     // The attribute was never added because Pragmatic was never wired up.
     expect(card.getAttribute("draggable")).not.toBe("true");

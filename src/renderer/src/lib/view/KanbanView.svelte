@@ -2,11 +2,9 @@
   import { onMount } from "svelte";
   import { LockSimpleIcon } from "phosphor-svelte";
 
-  import type { RangeTuple } from "fuse.js";
-
   import type { Column, Task } from "../../../../shared/types";
-  import type { Snippet } from "../search";
   import { writDerived } from "../derived.svelte";
+  import { search } from "../search.svelte";
   import { writState } from "../state.svelte";
   import { draggable, dropTarget, monitorForElements } from "../dnd/dnd";
   import HiddenDropZone from "../dnd/HiddenDropZone.svelte";
@@ -17,21 +15,6 @@
 
   interface Props {
     columns: Column[];
-    /** The post-filter task set. Kanban renders flat-per-column — every
-     *  matching task surfaces, regardless of nesting. */
-    visibleTasks: Task[];
-    /** False when a non-position sort is active. Disables card drag so the
-     *  user doesn't reorder `position` while looking at a different sort —
-     *  the move would be invisible until they switched sorts back. */
-    dragEnabled: boolean;
-    /** Title-field match indices per task, for inline highlighting. null /
-     *  omitted = no query active. A task with a description-only Fuse match
-     *  won't appear here even though it's in visibleTasks. */
-    titleMatchesById?: Record<string, ReadonlyArray<RangeTuple>> | null;
-    /** Description-match snippet per task — rendered as a dim italic line
-     *  under the title so the user sees what hit in body. Title-only
-     *  matches don't appear here. */
-    descSnippetById?: Record<string, Snippet> | null;
     onTaskClick: (id: string) => void;
     onTaskContextMenu: (id: string, event: MouseEvent) => void;
     /** Id of the task whose context menu is currently open, if any. The
@@ -40,16 +23,7 @@
     contextMenuTaskId: string | null;
   }
 
-  const {
-    columns,
-    visibleTasks,
-    dragEnabled,
-    titleMatchesById = null,
-    descSnippetById = null,
-    onTaskClick,
-    onTaskContextMenu,
-    contextMenuTaskId,
-  }: Props = $props();
+  const { columns, onTaskClick, onTaskContextMenu, contextMenuTaskId }: Props = $props();
 
   // Backlog and Archived are intentionally hidden from kanban — Backlog is
   // a pre-active staging list, Archived is post-resolved storage. Both stay
@@ -67,7 +41,7 @@
   const backlogColumn = $derived(columns.find((c) => c.name.toLowerCase() === "backlog") ?? null);
 
   function tasksInColumn(colId: string): Task[] {
-    return visibleTasks.filter((t) => t.columnId === colId);
+    return search.visibleTasks.filter((t) => t.columnId === colId);
   }
 
   function parentOf(parentId: string): Task | undefined {
@@ -189,7 +163,7 @@
             }}
             use:draggable={{
               data: { type: "card", taskId: task.id },
-              disabled: !dragEnabled,
+              disabled: !search.dragEnabled,
               onDragStart: () => (draggingTaskId = task.id),
               onDrop: () => (draggingTaskId = null),
             }}
@@ -202,7 +176,7 @@
             <div class="flex items-baseline gap-2">
               <TaskIdChip id={task.id} />
               <span class="flex-1">
-                <Highlighted text={task.title} indices={titleMatchesById?.[task.id]} />
+                <Highlighted text={task.title} indices={search.titleMatchesById?.[task.id]} />
               </span>
               {#if task.blockedBy.length > 0}
                 <span
@@ -215,8 +189,8 @@
                 </span>
               {/if}
             </div>
-            {#if descSnippetById?.[task.id]}
-              {@const snip = descSnippetById[task.id]}
+            {#if search.descSnippetById?.[task.id]}
+              {@const snip = search.descSnippetById[task.id]}
               <span class="line-clamp-2 text-xs italic opacity-60">
                 <Highlighted text={snip.text} indices={snip.indices} />
               </span>
