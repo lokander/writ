@@ -2,6 +2,7 @@
   import { untrack } from "svelte";
 
   import type { Priority, Task, TaskUpdate } from "../../../../shared/types";
+  import { closeGuard } from "../close-guard.svelte";
   import { writState } from "../state.svelte";
   import {
     buildResolvedUpdate,
@@ -117,6 +118,17 @@
   );
 
   const dirty = $derived(dirtyFlags.any);
+
+  // Contribute to the renderer-wide close guard so App.svelte's
+  // onRequestClose handler knows there's unsaved work in this modal. The
+  // cleanup runs whenever the predicate flips false (saved, reverted,
+  // mode switched back to view) or when the component unmounts, so the
+  // counter stays balanced for free.
+  $effect(() => {
+    if (mode !== "edit" || !dirty) return undefined;
+    closeGuard.enter();
+    return () => closeGuard.leave();
+  });
 
   const canSave = $derived(dirty && title.trim().length > 0 && !saving && !taskGone);
 

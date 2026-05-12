@@ -27,8 +27,24 @@ export function focusMainWindow(): void {
   win.focus();
 }
 
+// Two-phase close guard. The renderer owns the modal stack and dirty-edit
+// state, so we block the window's natural close, ask the renderer for
+// approval, and only proceed when it sends `app:close-now`. This flag is
+// the latch that lets the second close call through.
+let mainWindow: BrowserWindow | null = null;
+let allowClose = false;
+
+/** Called from the IPC layer when the renderer approves a pending close.
+ *  Sets the latch and re-issues window.close(); the close handler below
+ *  sees the latch and skips the preventDefault. No-op if the window's
+ *  already gone (e.g. force-quit raced us). */
+export function approveCloseAndClose(): void {
+  allowClose = true;
+  mainWindow?.close();
+}
+
 export function createWindow(): void {
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 1280,
@@ -43,7 +59,21 @@ export function createWindow(): void {
   });
 
   mainWindow.on("ready-to-show", () => {
-    mainWindow.show();
+    mainWindow?.show();
+  });
+
+  // First close attempt: hand off to the renderer's guard. Cmd+Q and File >
+  // Quit both route through here too — `before-quit` fires first but can't
+  // succeed until each window's close completes, so our preventDefault
+  // stalls the whole quit sequence until the renderer approves.
+  mainWindow.on("close", (event) => {
+    if (allowClose) return;
+    event.preventDefault();
+    mainWindow?.webContents.send("app:request-close");
+  });
+
+  mainWindow.on("closed", () => {
+    mainWindow = null;
   });
 
   // External-link handling. markdown-it's link_open override (lib/markdown.ts)

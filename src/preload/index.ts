@@ -49,6 +49,27 @@ const api = {
       };
     },
   },
+  app: {
+    /** Approve a pending window close. Main blocks the natural close and
+     *  sends `app:request-close`; the renderer's guard checks for dirty
+     *  edits and calls this to let the close through. One-way; no
+     *  response is meaningful (the next thing that happens is the window
+     *  disappearing). */
+    closeNow: (): void => {
+      ipcRenderer.send("app:close-now");
+    },
+    /** Subscribe to main's "user is trying to close the window" message.
+     *  The handler should run the renderer's dirty-edit guard and either
+     *  approve via `closeNow()` or do nothing (the close stays blocked).
+     *  Returns an unsubscribe fn. */
+    onRequestClose: (handler: () => void): (() => void) => {
+      const wrapped = (): void => handler();
+      ipcRenderer.on("app:request-close", wrapped);
+      return () => {
+        ipcRenderer.removeListener("app:request-close", wrapped);
+      };
+    },
+  },
 };
 
 if (process.contextIsolated) {

@@ -21,8 +21,18 @@ import {
   refreshCurrentProject,
   switchProject,
 } from "./project";
+import { approveCloseAndClose } from "./window";
 
 export function registerIpcHandlers(): void {
+  // Renderer's side of the two-phase close guard — sent when the dirty-edit
+  // prompt resolves to "close anyway" (or there's nothing dirty in the
+  // first place). One-way `send`, not invoke/handle: the renderer
+  // doesn't care about a response, and we don't want to delay the
+  // window.close() roundtrip on it.
+  ipcMain.on("app:close-now", () => {
+    approveCloseAndClose();
+  });
+
   ipcMain.handle("project:current", () => {
     // Always rebuild so the renderer's first paint after a CLI-side
     // `writ project rename` reflects the new display name without restart.

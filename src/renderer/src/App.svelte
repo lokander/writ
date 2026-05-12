@@ -11,6 +11,7 @@
   import TaskContextMenu from "./lib/picker/TaskContextMenu.svelte";
   import TaskEditModal from "./lib/modal/TaskEditModal.svelte";
   import ToastStack from "./lib/toast/ToastStack.svelte";
+  import { closeGuard } from "./lib/close-guard.svelte";
   import { filters } from "./lib/filters.svelte";
   import { search } from "./lib/search.svelte";
   import { writState } from "./lib/state.svelte";
@@ -37,6 +38,14 @@
 
   let showAddModal = $state(false);
   let view = $state<View>("kanban");
+
+  // Two-phase close guard. Main blocks its window's `close` event and
+  // sends `app:request-close`; the renderer prompts (or approves
+  // immediately when nothing's dirty) and calls `app.closeNow()` to let
+  // the close through. The dialog flag stays scoped to App because the
+  // ConfirmDialog needs a render slot — closeGuard.hasDirty is what we
+  // consult at request time.
+  let confirmingClose = $state(false);
 
   // Right-click context menu. Holds the target task and the cursor position
   // captured at right-click time. Cleared on action / outside-click / Esc.
@@ -138,9 +147,25 @@
     // `silent: true` skips the loading flicker so the main view stays
     // mounted across the refetch — keyed each blocks diff by id and only
     // changed rows actually re-render.
-    return window.api.events.onProjectChanged(() => {
+    const unsubProject = window.api.events.onProjectChanged(() => {
       writState.loadAll({ silent: true });
     });
+
+    // Two-phase close guard. Main preventDefaults the window's first close
+    // and asks us; we approve immediately when nothing's dirty, otherwise
+    // open the discard prompt and wait for the user's call.
+    const unsubClose = window.api.app.onRequestClose(() => {
+      if (closeGuard.hasDirty) {
+        confirmingClose = true;
+      } else {
+        window.api.app.closeNow();
+      }
+    });
+
+    return () => {
+      unsubProject();
+      unsubClose();
+    };
   });
 
   function onTaskCreated(task: Task): void {
@@ -318,6 +343,21 @@
       variant="danger"
       onConfirm={cmConfirmDelete}
       onCancel={() => (contextMenuDeleteFor = null)}
+    />
+  {/if}
+
+  {#if confirmingClose}
+    <ConfirmDialog
+      title="Close writ?"
+      message="You have unsaved task edits. They'll be lost if you close now."
+      confirmLabel="Close anyway"
+      cancelLabel="Keep editing"
+      variant="danger"
+      onConfirm={() => {
+        confirmingClose = false;
+        window.api.app.closeNow();
+      }}
+      onCancel={() => (confirmingClose = false)}
     />
   {/if}
 

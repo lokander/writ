@@ -29,7 +29,13 @@ app.on("window-all-closed", () => {
   }
 });
 
-app.on("before-quit", () => {
+// Quit-time cleanup runs in `will-quit`, after all windows have actually
+// closed. Moving it out of `before-quit` is critical: the renderer's
+// close guard can cancel the close, and cleanup that ran in before-quit
+// would have already torn down the ping server / DB handle for a session
+// the user just chose to keep alive. See design.md "Window close:
+// two-phase guard".
+app.on("will-quit", () => {
   stopPingServer();
   closeCurrentProject();
 });
