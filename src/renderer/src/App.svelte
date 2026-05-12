@@ -9,6 +9,7 @@
   import EmptyState from "./lib/view/EmptyState.svelte";
   import KanbanView from "./lib/view/KanbanView.svelte";
   import ListView from "./lib/view/ListView.svelte";
+  import NoTasksHint from "./lib/view/NoTasksHint.svelte";
   import TaskContextMenu from "./lib/picker/TaskContextMenu.svelte";
   import TaskEditModal from "./lib/modal/TaskEditModal.svelte";
   import ToastStack from "./lib/toast/ToastStack.svelte";
@@ -312,7 +313,12 @@
          above). -->
     <FilterBar {visibleTagChips} />
 
-    {#if view === "kanban"}
+    {#if writState.tasks.length === 0}
+      <!-- Empty project surface: no tasks anywhere, so the kanban / list
+           would be all-empty columns. The per-column empty state covers
+           the partial case (some columns empty, others not). -->
+      <NoTasksHint onNewTask={() => (showAddModal = true)} />
+    {:else if view === "kanban"}
       <KanbanView
         columns={writState.columns}
         onTaskClick={(id) => openTaskModal(id)}
