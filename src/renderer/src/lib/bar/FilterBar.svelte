@@ -1,11 +1,10 @@
 <script lang="ts">
-  import { FunnelIcon, TagIcon, XIcon } from "phosphor-svelte";
+  import { FunnelIcon, XIcon } from "phosphor-svelte";
 
   import { type Priority, type Tag } from "../../../../shared/types";
   import { STATE_FILTERS, type StateFilter } from "../filter";
-  import TagChip from "../chip/TagChip.svelte";
-  import Combobox from "../picker/Combobox.svelte";
   import PriorityFilter from "./PriorityFilter.svelte";
+  import TagFilter from "./TagFilter.svelte";
 
   interface Props {
     /** Selected tag names. Replaced wholesale on toggle (no mutation).
@@ -32,27 +31,6 @@
     visibleTagChips,
     filtersActive,
   }: Props = $props();
-
-  let tagQuery = $state("");
-
-  function toggleTag(name: string): void {
-    tags = tags.includes(name) ? tags.filter((t) => t !== name) : [...tags, name];
-  }
-
-  // Tags in scope but not currently selected — the typeahead's "what you
-  // can still add" set. Selected tags live as chips above the input, where
-  // each chip's X removes it. (Mirroring TagPicker's split: existing chips
-  // for active selection, combobox for the remaining pool.)
-  const availableTags = $derived(visibleTagChips.filter((t) => !tags.includes(t.name)));
-
-  // Pair each selected name with its color from the in-scope tag set so
-  // the chips render with the same palette as the dropdown rows. App.svelte
-  // always keeps filtered tags in `tagsInView`, so the lookup hits.
-  const selectedTags = $derived(
-    tags
-      .map((name): Tag | null => visibleTagChips.find((t) => t.name === name) ?? null)
-      .filter((t): t is Tag => t !== null),
-  );
 
   function clearAll(): void {
     tags = [];
@@ -85,34 +63,7 @@
   <PriorityFilter bind:priorities />
 
   {#if visibleTagChips.length > 0}
-    <div class="flex flex-wrap items-center gap-2">
-      <TagIcon size={14} class="opacity-50" aria-label="Tags" />
-      <div class="w-40">
-        <Combobox
-          items={availableTags}
-          itemText={(t) => t.name}
-          itemKey={(t) => t.name}
-          onSelect={(t) => toggleTag(t.name)}
-          item={tagOptionRow}
-          bind:value={tagQuery}
-          placeholder={selectedTags.length === 0 ? "Filter by tag…" : "Add tag…"}
-        />
-      </div>
-      {#if selectedTags.length > 0}
-        <div class="flex flex-wrap items-center gap-1">
-          {#each selectedTags as tag (tag.name)}
-            <button
-              type="button"
-              class="cursor-pointer"
-              aria-label="Remove tag {tag.name}"
-              onclick={() => toggleTag(tag.name)}
-            >
-              <TagChip name={tag.name} color={tag.color} />
-            </button>
-          {/each}
-        </div>
-      {/if}
-    </div>
+    <TagFilter bind:tags {visibleTagChips} />
   {/if}
 
   {#if filtersActive}
@@ -121,7 +72,3 @@
     </button>
   {/if}
 </div>
-
-{#snippet tagOptionRow({ item: t }: { item: Tag; active: boolean })}
-  <TagChip name={t.name} color={t.color} />
-{/snippet}

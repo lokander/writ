@@ -24,6 +24,22 @@
      *  single-value pickers: input mirrors the selected item's text. */
     clearOnSelect?: boolean;
     disabled?: boolean;
+    /** Render the input borderless and transparent so it blends into a
+     *  containing chrome (e.g. the bordered TagFilter pill). Defaults to
+     *  the standard `input-bordered` style. */
+    flat?: boolean;
+    /** CSS min-width applied to the portaled listbox. Use when the input
+     *  is intentionally narrow but the options need more room (e.g. the
+     *  bar's tag filter, where the input is small but tag chips can be
+     *  longer than the input width). Default is undefined → listbox width
+     *  exactly matches the input. */
+    dropdownMinWidth?: string;
+    /** Pixel offset added to the listbox's `left` (negative shifts left).
+     *  The listbox still tracks the input — useful when the input is
+     *  inset by some chrome (e.g. TagFilter's pill padding) and the
+     *  dropdown text should line up with the input's visual start
+     *  rather than the input element's left edge. */
+    dropdownOffsetX?: number;
   }
 
   let {
@@ -38,6 +54,9 @@
     value = $bindable(""),
     clearOnSelect = true,
     disabled = false,
+    flat = false,
+    dropdownMinWidth = undefined,
+    dropdownOffsetX = 0,
   }: Props = $props();
 
   let open = $state(false);
@@ -64,6 +83,17 @@
       window.removeEventListener("scroll", updateRect, true);
       window.removeEventListener("resize", updateRect);
     };
+  });
+
+  // Re-measure when the option set changes too — in TagFilter the input
+  // shifts horizontally as chips left of it are added/removed (e.g.
+  // Backspace-on-empty drops the last chip), so we need to follow it
+  // without waiting for a scroll/resize event. $effect runs after the DOM
+  // updates, so the rect reflects the post-relayout position.
+  $effect(() => {
+    if (!open) return;
+    void items;
+    updateRect();
   });
 
   const filtered = $derived(
@@ -141,7 +171,9 @@
   <input
     bind:this={inputEl}
     type="text"
-    class="input input-bordered input-sm w-full"
+    class={flat
+      ? "block h-5 w-full appearance-none border-0 bg-transparent px-1 py-0 text-xs leading-none placeholder-base-content/40 focus:outline-none"
+      : "input input-bordered input-sm w-full"}
     {placeholder}
     {disabled}
     bind:value
@@ -161,8 +193,9 @@
       id={listboxId}
       class="fixed z-1000 max-h-60 overflow-y-auto rounded-box border border-base-300 bg-base-100 shadow-lg"
       style:top="{inputRect.bottom + 4}px"
-      style:left="{inputRect.left}px"
+      style:left="{inputRect.left + dropdownOffsetX}px"
       style:width="{inputRect.width}px"
+      style:min-width={dropdownMinWidth}
       role="listbox"
     >
       {#each filtered as it, i (itemKey(it))}

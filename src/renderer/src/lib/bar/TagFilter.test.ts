@@ -1,16 +1,17 @@
 // @vitest-environment happy-dom
 //
-// FilterBar — covers the typeahead tag picker added for many-tag projects.
-// Selected tags render as chips (with an X to remove); the Combobox shows
-// the unselected pool. Typing filters the dropdown; ArrowDown + Enter
-// toggles a tag into the active set; clicking the chip's X removes it.
+// TagFilter — the rounded-pill tag typeahead extracted from FilterBar.
+// Selected tags render as click-to-remove chips after the input; the
+// Combobox dropdown surfaces the unselected pool. Typing filters the
+// dropdown; ArrowDown + Enter toggles a tag into the active set;
+// clicking the chip itself removes it.
 
 import { fireEvent, render, screen, type RenderResult } from "@testing-library/svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Tag } from "../../../../shared/types";
 
-import FilterBar from "./FilterBar.svelte";
+import TagFilter from "./TagFilter.svelte";
 
 const TAGS: Tag[] = [
   { id: "t-ui", name: "ui", color: "red" },
@@ -18,27 +19,17 @@ const TAGS: Tag[] = [
   { id: "t-docs", name: "docs", color: "blue" },
 ];
 
-interface RenderOpts {
-  tags?: string[];
-}
-
-function renderBar({ tags = [] }: RenderOpts = {}): RenderResult<typeof FilterBar> {
-  return render(FilterBar, {
-    tags,
-    priorities: [],
-    stateFilter: "any",
-    visibleTagChips: TAGS,
-    filtersActive: tags.length > 0,
-  });
+function renderFilter(tags: string[] = []): RenderResult<typeof TagFilter> {
+  return render(TagFilter, { tags, visibleTagChips: TAGS });
 }
 
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("FilterBar tag typeahead", () => {
+describe("TagFilter", () => {
   it("renders all in-scope tags in the dropdown when nothing is selected", async () => {
-    renderBar();
+    renderFilter();
     const input = screen.getByRole("combobox");
     await fireEvent.focus(input);
     const listbox = screen.getByRole("listbox");
@@ -48,7 +39,7 @@ describe("FilterBar tag typeahead", () => {
   });
 
   it("typing narrows the dropdown to substring matches", async () => {
-    renderBar();
+    renderFilter();
     const input = screen.getByRole("combobox");
     await fireEvent.focus(input);
     await fireEvent.input(input, { target: { value: "co" } });
@@ -59,7 +50,7 @@ describe("FilterBar tag typeahead", () => {
   });
 
   it("ArrowDown + Enter toggles the highlighted tag into the filter set", async () => {
-    renderBar();
+    renderFilter();
     const input = screen.getByRole("combobox");
     await fireEvent.focus(input);
     // Items are in the order from visibleTagChips: ui, core, docs.
@@ -73,7 +64,7 @@ describe("FilterBar tag typeahead", () => {
   });
 
   it("clicking a selected tag's chip removes it from the filter set", async () => {
-    renderBar({ tags: ["ui"] });
+    renderFilter(["ui"]);
     expect(screen.getByText("ui")).toBeInTheDocument();
     const chipButton = screen.getByRole("button", { name: /remove tag ui/i });
     await fireEvent.click(chipButton);
@@ -85,8 +76,33 @@ describe("FilterBar tag typeahead", () => {
     expect(listbox.textContent).toContain("ui");
   });
 
+  it("Backspace on an empty input removes the last selected tag", async () => {
+    renderFilter(["ui", "core"]);
+    const input = screen.getByRole("combobox");
+    await fireEvent.focus(input);
+    // 'ui' and 'core' are both shown as chips; the last in order is 'core'.
+    expect(screen.getByRole("button", { name: /remove tag ui/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /remove tag core/i })).toBeInTheDocument();
+    await fireEvent.keyDown(input, { key: "Backspace" });
+    // Last chip ('core') is gone; 'ui' remains.
+    expect(screen.queryByRole("button", { name: /remove tag core/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /remove tag ui/i })).toBeInTheDocument();
+  });
+
+  it("Backspace with a non-empty query is a no-op for selections (input handles its own delete)", async () => {
+    renderFilter(["ui"]);
+    const input = screen.getByRole("combobox");
+    await fireEvent.focus(input);
+    await fireEvent.input(input, { target: { value: "x" } });
+    await fireEvent.keyDown(input, { key: "Backspace" });
+    // The chip stays put — the browser's default Backspace handles the
+    // typed character; we only fire the chip removal when the input is
+    // already empty.
+    expect(screen.getByRole("button", { name: /remove tag ui/i })).toBeInTheDocument();
+  });
+
   it("selected tags are excluded from the dropdown's available pool", async () => {
-    renderBar({ tags: ["ui"] });
+    renderFilter(["ui"]);
     const input = screen.getByRole("combobox");
     await fireEvent.focus(input);
     const listbox = screen.getByRole("listbox");
