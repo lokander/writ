@@ -76,10 +76,20 @@
       <HeadCircuitIcon size={24} weight="duotone" class="opacity-80" />
       <h1 class="ml-1 font-mono text-lg font-semibold opacity-60">writ</h1>
     </span>
+    {#if !writState.loading}
+      <button
+        type="button"
+        class="btn btn-ghost btn-xs px-0 opacity-80"
+        onclick={onOpenProject}
+        title="Open another writ project…"
+        aria-label="Open project"
+      >
+        <FolderOpenIcon size={14} weight="bold" />
+      </button>
+    {/if}
     {#if writState.project}
       {@const usingFallback = writState.project.displayName === null}
       {@const displayed = writState.project.displayName ?? basenameOf(writState.project.root)}
-      <span class="shrink-0 font-mono text-lg opacity-30" aria-hidden="true">::</span>
       {#if renamingProject}
         <!-- svelte-ignore a11y_autofocus -->
         <input
@@ -209,17 +219,6 @@
           </button>
         {/if}
       </div>
-    {/if}
-    {#if !writState.loading}
-      <button
-        type="button"
-        class="btn btn-ghost btn-xs"
-        onclick={onOpenProject}
-        title="Open another writ project…"
-        aria-label="Open project"
-      >
-        <FolderOpenIcon size={14} weight="bold" />
-      </button>
     {/if}
     {#if writState.project && !writState.loading}
       <button type="button" class="btn btn-primary btn-xs" onclick={onNewTask}>
