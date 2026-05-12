@@ -7,6 +7,7 @@
 
   import { portal } from "../portal";
   import { PRIORITY_DOT_CLASS } from "../priority-color";
+  import { nextWorkflowColumn } from "../workflow";
 
   interface Props {
     task: Task;
@@ -22,6 +23,12 @@
   }
 
   const { task, columns, x, y, onEdit, onSetPriority, onMove, onDelete, onClose }: Props = $props();
+
+  // The "advance one step" shortcut. Null when the card sits on the
+  // terminal column, or when the current column's name isn't a canonical
+  // workflow step (customized projects). The full "Move to" submenu
+  // remains the escape hatch in all cases.
+  const advanceTarget = $derived(nextWorkflowColumn(columns, task.columnId));
 
   let menuEl: HTMLDivElement;
   // Capture x/y once at mount; the parent re-creates the component on every
@@ -173,6 +180,17 @@
   >
     Edit task…
   </button>
+
+  {#if advanceTarget}
+    <button
+      type="button"
+      class="rounded px-3 py-1.5 text-left hover:bg-base-200"
+      onclick={() => onMove(advanceTarget.id)}
+      onmouseenter={hideSubmenu}
+    >
+      Move to {advanceTarget.name}
+    </button>
+  {/if}
 
   <button
     type="button"
