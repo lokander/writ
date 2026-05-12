@@ -12,6 +12,7 @@
   import TaskEditModal from "./lib/modal/TaskEditModal.svelte";
   import ToastStack from "./lib/toast/ToastStack.svelte";
   import { filters } from "./lib/filters.svelte";
+  import { search } from "./lib/search.svelte";
   import { writState } from "./lib/state.svelte";
   import { toast } from "./lib/toast/toast.svelte";
   import type { Priority, Task } from "../../shared/types";
@@ -62,6 +63,10 @@
     if (v === view) return;
     view = v;
     filters.clear();
+    // Sort resets on view change too — kanban and list have different
+    // affordances and a sort that suits one rarely suits the other.
+    // Mirrors the filter reset above.
+    search.sortMode = "position";
   }
 
   // The modal owns its own "task disappeared" handling — it can decide
