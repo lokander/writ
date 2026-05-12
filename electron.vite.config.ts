@@ -33,6 +33,7 @@ export default defineConfig(({ command }) => {
   const defines = {
     __APP_COMMIT__: JSON.stringify(commit),
     __APP_VERSION__: JSON.stringify(pkg.version),
+    __APP_DESCRIPTION__: JSON.stringify(pkg.description),
   };
   return {
     main: { define: defines },

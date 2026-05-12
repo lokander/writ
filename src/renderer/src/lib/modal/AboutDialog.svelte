@@ -52,7 +52,7 @@
       </button>
     </div>
 
-    <p class="mb-6 text-sm opacity-80">A glorified TODO app for codebases.</p>
+    <p class="mb-6 text-sm opacity-80">{__APP_DESCRIPTION__}</p>
 
     <dl class="mb-6 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
       <dt class="opacity-60">Electron</dt>
