@@ -1,7 +1,10 @@
 <script lang="ts">
   import { LockSimpleIcon } from "phosphor-svelte";
+  import type { RangeTuple } from "fuse.js";
 
   import type { Column, Task } from "../../../../shared/types";
+  import type { Snippet } from "../search";
+  import Highlighted from "../Highlighted.svelte";
   import { PRIORITY_BORDER_CLASS } from "../priority-color";
   import TagChip from "../chip/TagChip.svelte";
   import TaskIdChip from "../chip/TaskIdChip.svelte";
@@ -23,6 +26,12 @@
     childCount: Record<string, number>;
     columnNameById: Record<string, string>;
     colorByTag: Record<string, string | null>;
+    /** Title-field match indices per task, for inline highlighting. null /
+     *  omitted = no query active. */
+    titleMatchesById?: Record<string, ReadonlyArray<RangeTuple>> | null;
+    /** Description-match snippet per task — rendered inline after the title
+     *  so the user sees what hit in body. Title-only matches don't appear. */
+    descSnippetById?: Record<string, Snippet> | null;
     onTaskClick: (id: string) => void;
     onTaskContextMenu: (id: string, event: MouseEvent) => void;
     /** Id of the task whose context menu is currently open, if any. The
@@ -41,6 +50,8 @@
     childCount,
     columnNameById,
     colorByTag,
+    titleMatchesById = null,
+    descSnippetById = null,
     onTaskClick,
     onTaskContextMenu,
     contextMenuTaskId,
@@ -118,7 +129,17 @@
     }}
   >
     <TaskIdChip id={task.id} />
-    <span class="flex-1">{task.title}</span>
+    <div class="flex min-w-0 flex-1 items-baseline gap-3">
+      <span>
+        <Highlighted text={task.title} indices={titleMatchesById?.[task.id]} />
+      </span>
+      {#if descSnippetById?.[task.id]}
+        {@const snip = descSnippetById[task.id]}
+        <span class="truncate text-xs italic opacity-60">
+          <Highlighted text={snip.text} indices={snip.indices} />
+        </span>
+      {/if}
+    </div>
     {#if task.blockedBy.length > 0}
       <span
         class="text-warning"

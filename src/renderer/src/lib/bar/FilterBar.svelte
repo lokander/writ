@@ -4,6 +4,7 @@
   import { type Priority, type Tag } from "../../../../shared/types";
   import { type StateFilter as StateFilterValue } from "../filter";
   import PriorityFilter from "./PriorityFilter.svelte";
+  import SearchFilter from "./SearchFilter.svelte";
   import StateFilter from "./StateFilter.svelte";
   import TagFilter from "./TagFilter.svelte";
 
@@ -16,6 +17,8 @@
     priorities: Priority[];
     /** State (ready/blocked/any) narrowing. */
     stateFilter: StateFilterValue;
+    /** Free-text fuzzy query over title + description. */
+    query: string;
     /** Tag chips to render — owner-derived from the tasks currently visible
      *  so the legend doesn't list tags the user can't see anyway. */
     visibleTagChips: Tag[];
@@ -29,6 +32,7 @@
     tags = $bindable(),
     priorities = $bindable(),
     stateFilter = $bindable(),
+    query = $bindable(),
     visibleTagChips,
     filtersActive,
   }: Props = $props();
@@ -37,6 +41,7 @@
     tags = [];
     priorities = [];
     stateFilter = "any";
+    query = "";
   }
 </script>
 
@@ -47,6 +52,7 @@
 >
   <FunnelIcon size={20} weight="duotone" class="ml-0.5 mr-1 opacity-60" aria-label="Filter" />
 
+  <SearchFilter bind:query />
   <StateFilter bind:stateFilter />
   <PriorityFilter bind:priorities />
 

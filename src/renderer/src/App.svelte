@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import type { RangeTuple } from "fuse.js";
 
   import AddTaskModal from "./lib/modal/AddTaskModal.svelte";
   import AppBar, { VIEWS, type View } from "./lib/bar/AppBar.svelte";
@@ -17,6 +18,7 @@
   import EmptyState from "./lib/view/EmptyState.svelte";
   import KanbanView from "./lib/view/KanbanView.svelte";
   import ListView from "./lib/view/ListView.svelte";
+  import { fuzzySearch, makeSnippet, type Snippet } from "./lib/search";
   import TaskContextMenu from "./lib/picker/TaskContextMenu.svelte";
   import TaskEditModal from "./lib/modal/TaskEditModal.svelte";
   import ToastStack from "./lib/toast/ToastStack.svelte";
@@ -77,14 +79,16 @@
   let filterTags = $state<string[]>([]);
   let filterPriorities = $state<Priority[]>([]);
   let stateFilter = $state<StateFilter>("any");
+  let filterQuery = $state<string>("");
 
-  // Single object the filter helpers consume. Derived from the three
+  // Single object the filter helpers consume. Derived from the four
   // individual `$state` slots — keeping them split lets `bind:` work in
   // FilterBar without thrashing the whole object.
   const filterState = $derived<FilterState>({
     tags: filterTags,
     priorities: filterPriorities,
     state: stateFilter,
+    query: filterQuery,
   });
 
   const filtersActive = $derived(computeFiltersActive(filterState));
@@ -94,6 +98,7 @@
     filterTags = empty.tags;
     filterPriorities = empty.priorities;
     stateFilter = empty.state;
+    filterQuery = empty.query;
   }
 
   function onViewChange(v: View): void {
@@ -126,6 +131,7 @@
           tags: filterTags,
           priorities: filterPriorities,
           state: stateFilter,
+          query: filterQuery,
         }),
       );
     } catch {
@@ -157,9 +163,52 @@
   // their parent without a second sort pass.
   const sortedTasks = $derived(sortTasks(writState.tasks, sortMode));
 
-  const visibleTasks = $derived(
-    filtersActive ? sortedTasks.filter((t) => taskMatchesFilters(t, filterState)) : sortedTasks,
-  );
+  // When a query is active, swap position/sort order for Fuse rank order so
+  // each kanban column shows its matching cards best-first. Tag/priority/state
+  // filters compose on top — they're a per-task predicate, Fuse isn't, so
+  // the search runs at the collection level here rather than via matchesFilters.
+  const searchResults = $derived(fuzzySearch(sortedTasks, filterQuery));
+
+  const visibleTasks = $derived.by(() => {
+    const ranked = searchResults ? searchResults.map((r) => r.task) : sortedTasks;
+    return filtersActive ? ranked.filter((t) => taskMatchesFilters(t, filterState)) : ranked;
+  });
+
+  // Title-field match indices per task, for inline <Highlighted /> in the
+  // task cards. null when no query is active so consumers can skip the
+  // segment-splitting work entirely. Description matches also drive ranking
+  // but aren't rendered in cards (description isn't shown there).
+  const titleMatchesById = $derived.by<Record<string, ReadonlyArray<RangeTuple>> | null>(() => {
+    if (!searchResults) return null;
+    const m: Record<string, ReadonlyArray<RangeTuple>> = {};
+    for (const r of searchResults) {
+      for (const match of r.matches) {
+        if (match.key === "title") {
+          m[r.task.id] = match.indices;
+          break;
+        }
+      }
+    }
+    return m;
+  });
+
+  // Description-field snippet per task. Built around the first description
+  // match so the card can answer "why did this hit?" inline — title-only
+  // matches don't get a snippet (the title highlight already explains it).
+  const descSnippetById = $derived.by<Record<string, Snippet> | null>(() => {
+    if (!searchResults) return null;
+    const m: Record<string, Snippet> = {};
+    for (const r of searchResults) {
+      for (const match of r.matches) {
+        if (match.key === "description" && match.value) {
+          const s = makeSnippet(match.value, match.indices);
+          if (s) m[r.task.id] = s;
+          break;
+        }
+      }
+    }
+    return m;
+  });
 
   const childrenByParent = $derived.by(() => {
     const map: Record<string, Task[]> = {};
@@ -226,6 +275,7 @@
           tags?: unknown;
           priorities?: unknown;
           state?: unknown;
+          query?: unknown;
         };
         if (Array.isArray(parsed.tags) && parsed.tags.every((v) => typeof v === "string")) {
           filterTags = parsed.tags;
@@ -241,6 +291,9 @@
           (STATE_FILTERS as string[]).includes(parsed.state)
         ) {
           stateFilter = parsed.state as StateFilter;
+        }
+        if (typeof parsed.query === "string") {
+          filterQuery = parsed.query;
         }
       }
     } catch {
@@ -388,6 +441,7 @@
       bind:tags={filterTags}
       bind:priorities={filterPriorities}
       bind:stateFilter
+      bind:query={filterQuery}
       {visibleTagChips}
       {filtersActive}
     />
@@ -399,6 +453,8 @@
         {colorByTag}
         {childCount}
         {dragEnabled}
+        {titleMatchesById}
+        {descSnippetById}
         onTaskClick={(id) => openTaskModal(id)}
         onTaskContextMenu={openContextMenu}
         contextMenuTaskId={contextMenuFor?.taskId ?? null}
@@ -414,6 +470,8 @@
         {childCount}
         {columnNameById}
         {colorByTag}
+        {titleMatchesById}
+        {descSnippetById}
         onTaskClick={(id) => openTaskModal(id)}
         onTaskContextMenu={openContextMenu}
         contextMenuTaskId={contextMenuFor?.taskId ?? null}

@@ -21,14 +21,20 @@ export interface FilterState {
   priorities: Priority[];
   /** State narrowing — ready, blocked, or no narrowing ("any"). */
   state: StateFilter;
+  /** Free-text fuzzy query over title + description. Applied at the
+   *  collection level via lib/search.ts — Fuse needs the full set to
+   *  score matches, so matchesFilters intentionally ignores this field. */
+  query: string;
 }
 
 export function emptyFilter(): FilterState {
-  return { tags: [], priorities: [], state: "any" };
+  return { tags: [], priorities: [], state: "any", query: "" };
 }
 
 export function filtersActive(f: FilterState): boolean {
-  return f.tags.length > 0 || f.priorities.length > 0 || f.state !== "any";
+  return (
+    f.tags.length > 0 || f.priorities.length > 0 || f.state !== "any" || f.query.trim().length > 0
+  );
 }
 
 export function matchesFilters(task: Task, f: FilterState): boolean {

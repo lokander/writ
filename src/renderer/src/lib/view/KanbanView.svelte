@@ -2,10 +2,14 @@
   import { onMount } from "svelte";
   import { LockSimpleIcon } from "phosphor-svelte";
 
+  import type { RangeTuple } from "fuse.js";
+
   import type { Column, Task } from "../../../../shared/types";
+  import type { Snippet } from "../search";
   import { writState } from "../state.svelte";
   import { draggable, dropTarget, monitorForElements } from "../dnd/dnd";
   import HiddenDropZone from "../dnd/HiddenDropZone.svelte";
+  import Highlighted from "../Highlighted.svelte";
   import { PRIORITY_BORDER_CLASS } from "../priority-color";
   import TagChip from "../chip/TagChip.svelte";
   import TaskIdChip from "../chip/TaskIdChip.svelte";
@@ -23,6 +27,14 @@
      *  user doesn't reorder `position` while looking at a different sort —
      *  the move would be invisible until they switched sorts back. */
     dragEnabled: boolean;
+    /** Title-field match indices per task, for inline highlighting. null /
+     *  omitted = no query active. A task with a description-only Fuse match
+     *  won't appear here even though it's in visibleTasks. */
+    titleMatchesById?: Record<string, ReadonlyArray<RangeTuple>> | null;
+    /** Description-match snippet per task — rendered as a dim italic line
+     *  under the title so the user sees what hit in body. Title-only
+     *  matches don't appear here. */
+    descSnippetById?: Record<string, Snippet> | null;
     onTaskClick: (id: string) => void;
     onTaskContextMenu: (id: string, event: MouseEvent) => void;
     /** Id of the task whose context menu is currently open, if any. The
@@ -37,6 +49,8 @@
     colorByTag,
     childCount,
     dragEnabled,
+    titleMatchesById = null,
+    descSnippetById = null,
     onTaskClick,
     onTaskContextMenu,
     contextMenuTaskId,
@@ -192,7 +206,9 @@
             {/if}
             <div class="flex items-baseline gap-2">
               <TaskIdChip id={task.id} />
-              <span class="flex-1">{task.title}</span>
+              <span class="flex-1">
+                <Highlighted text={task.title} indices={titleMatchesById?.[task.id]} />
+              </span>
               {#if task.blockedBy.length > 0}
                 <span
                   class="text-warning"
@@ -204,6 +220,12 @@
                 </span>
               {/if}
             </div>
+            {#if descSnippetById?.[task.id]}
+              {@const snip = descSnippetById[task.id]}
+              <span class="line-clamp-2 text-xs italic opacity-60">
+                <Highlighted text={snip.text} indices={snip.indices} />
+              </span>
+            {/if}
             {#if task.tags.length > 0 || n > 0}
               <div class="flex flex-wrap items-center gap-1">
                 {#each task.tags as tag (tag)}
