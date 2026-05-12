@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
 
+  import AboutDialog from "./lib/modal/AboutDialog.svelte";
   import AddTaskModal from "./lib/modal/AddTaskModal.svelte";
   import AppBar, { VIEWS, type View } from "./lib/bar/AppBar.svelte";
   import FilterBar from "./lib/bar/FilterBar.svelte";
@@ -37,6 +38,7 @@
   let nextModalUid = 1;
 
   let showAddModal = $state(false);
+  let showAboutDialog = $state(false);
   let view = $state<View>("kanban");
 
   // Two-phase close guard. Main blocks its window's `close` event and
@@ -270,7 +272,12 @@
     {onViewChange}
     onOpenProject={openProjectFolder}
     onNewTask={() => (showAddModal = true)}
+    onShowAbout={() => (showAboutDialog = true)}
   />
+
+  {#if showAboutDialog}
+    <AboutDialog onClose={() => (showAboutDialog = false)} />
+  {/if}
 
   {#if writState.loading || !writState.project}
     <EmptyState onOpenProject={openProjectFolder} />

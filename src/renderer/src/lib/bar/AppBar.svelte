@@ -6,6 +6,7 @@
 <script lang="ts">
   import {
     FolderOpenIcon,
+    InfoIcon,
     KanbanIcon,
     ListIcon,
     PlusIcon,
@@ -23,9 +24,10 @@
     onViewChange: (v: View) => void;
     onOpenProject: () => void;
     onNewTask: () => void;
+    onShowAbout: () => void;
   }
 
-  let { view, onViewChange, onOpenProject, onNewTask }: Props = $props();
+  let { view, onViewChange, onOpenProject, onNewTask, onShowAbout }: Props = $props();
 
   // `position` is the implicit default — drag-and-drop writes to it and it
   // matches the underlying row order. We hide it from the menu and call it
@@ -220,6 +222,15 @@
         {/if}
       </div>
     {/if}
+    <button
+      type="button"
+      class="btn btn-ghost btn-xs"
+      onclick={onShowAbout}
+      title="About writ"
+      aria-label="About writ"
+    >
+      <InfoIcon size={14} weight="bold" />
+    </button>
     {#if writState.project && !writState.loading}
       <button type="button" class="btn btn-primary btn-xs" onclick={onNewTask}>
         <PlusIcon size={12} weight="bold" />

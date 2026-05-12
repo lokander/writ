@@ -5,6 +5,18 @@ import eslintPluginSvelte from "eslint-plugin-svelte";
 
 export default defineConfig(
   { ignores: ["**/node_modules", "**/dist", "**/out"] },
+  {
+    // Build-time constants substituted by Vite's `define` in
+    // electron.vite.config.ts. Declared as globals in env.d.ts so
+    // TypeScript / svelte-check are happy; ESLint needs the same hint
+    // separately so `no-undef` doesn't fire on them.
+    languageOptions: {
+      globals: {
+        __APP_COMMIT__: "readonly",
+        __APP_VERSION__: "readonly",
+      },
+    },
+  },
   tseslint.configs.recommended,
   eslintPluginSvelte.configs["flat/recommended"],
   {
