@@ -5,14 +5,7 @@
   import AddTaskModal from "./lib/modal/AddTaskModal.svelte";
   import AppBar, { VIEWS, type View } from "./lib/bar/AppBar.svelte";
   import FilterBar from "./lib/bar/FilterBar.svelte";
-  import {
-    STATE_FILTERS,
-    emptyFilter,
-    filtersActive as computeFiltersActive,
-    matchesFilters as taskMatchesFilters,
-    type FilterState,
-    type StateFilter,
-  } from "./lib/filter";
+  import { matchesFilters as taskMatchesFilters } from "./lib/filter";
   import { SORT_MODES, sortTasks, type SortMode } from "../../shared/types";
   import ConfirmDialog from "./lib/modal/ConfirmDialog.svelte";
   import EmptyState from "./lib/view/EmptyState.svelte";
@@ -22,11 +15,11 @@
   import TaskContextMenu from "./lib/picker/TaskContextMenu.svelte";
   import TaskEditModal from "./lib/modal/TaskEditModal.svelte";
   import ToastStack from "./lib/toast/ToastStack.svelte";
+  import { filters } from "./lib/filters.svelte";
   import { writState } from "./lib/state.svelte";
   import { toast } from "./lib/toast/toast.svelte";
   import type { Priority, Task } from "../../shared/types";
 
-  const FILTER_STORAGE_KEY = "writ:filter";
   const VIEW_STORAGE_KEY = "writ:view";
   const SORT_STORAGE_KEY = "writ:sort";
 
@@ -72,38 +65,10 @@
       : writState.tasks.filter((t) => t.parentId === contextMenuDeleteFor).length,
   );
 
-  // Filter state. Persisted to localStorage so a reload doesn't blow it away.
-  // Single key for the whole user — only one project is open at a time and
-  // tag names rarely collide cross-project.
-  let filterTags = $state<string[]>([]);
-  let filterPriorities = $state<Priority[]>([]);
-  let stateFilter = $state<StateFilter>("any");
-  let filterQuery = $state<string>("");
-
-  // Single object the filter helpers consume. Derived from the four
-  // individual `$state` slots — keeping them split lets `bind:` work in
-  // FilterBar without thrashing the whole object.
-  const filterState = $derived<FilterState>({
-    tags: filterTags,
-    priorities: filterPriorities,
-    state: stateFilter,
-    query: filterQuery,
-  });
-
-  const filtersActive = $derived(computeFiltersActive(filterState));
-
-  function clearFilters(): void {
-    const empty = emptyFilter();
-    filterTags = empty.tags;
-    filterPriorities = empty.priorities;
-    stateFilter = empty.state;
-    filterQuery = empty.query;
-  }
-
   function onViewChange(v: View): void {
     if (v === view) return;
     view = v;
-    clearFilters();
+    filters.clear();
   }
 
   // The modal owns its own "task disappeared" handling — it can decide
@@ -120,25 +85,7 @@
     if (!stillThere) activeColumnId = writState.columns[0]!.id;
   });
 
-  // Persist filter state on every change. Wrapped so a localStorage failure
-  // (private mode, full quota) doesn't break the UI.
-  $effect(() => {
-    try {
-      localStorage.setItem(
-        FILTER_STORAGE_KEY,
-        JSON.stringify({
-          tags: filterTags,
-          priorities: filterPriorities,
-          state: stateFilter,
-          query: filterQuery,
-        }),
-      );
-    } catch {
-      // ignore — UI continues to work, filters just won't survive a reload
-    }
-  });
-
-  // Same persistence dance for the active view (kanban vs list).
+  // Persistence dance for the active view (kanban vs list).
   $effect(() => {
     try {
       localStorage.setItem(VIEW_STORAGE_KEY, view);
@@ -166,11 +113,11 @@
   // each kanban column shows its matching cards best-first. Tag/priority/state
   // filters compose on top — they're a per-task predicate, Fuse isn't, so
   // the search runs at the collection level here rather than via matchesFilters.
-  const searchResults = $derived(fuzzySearch(sortedTasks, filterQuery));
+  const searchResults = $derived(fuzzySearch(sortedTasks, filters.query));
 
   const visibleTasks = $derived.by(() => {
     const ranked = searchResults ? searchResults.map((r) => r.task) : sortedTasks;
-    return filtersActive ? ranked.filter((t) => taskMatchesFilters(t, filterState)) : ranked;
+    return filters.active ? ranked.filter((t) => taskMatchesFilters(t, filters.asState)) : ranked;
   });
 
   // Title-field match indices per task, for inline <Highlighted /> in the
@@ -242,7 +189,7 @@
         for (const name of t.tags) seen[name] = true;
       }
     }
-    for (const name of filterTags) seen[name] = true;
+    for (const name of filters.tags) seen[name] = true;
     return seen;
   });
 
@@ -250,37 +197,6 @@
 
   onMount(() => {
     writState.loadAll();
-    try {
-      const raw = localStorage.getItem(FILTER_STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as {
-          tags?: unknown;
-          priorities?: unknown;
-          state?: unknown;
-          query?: unknown;
-        };
-        if (Array.isArray(parsed.tags) && parsed.tags.every((v) => typeof v === "string")) {
-          filterTags = parsed.tags;
-        }
-        if (
-          Array.isArray(parsed.priorities) &&
-          parsed.priorities.every((v) => v === 0 || v === 1 || v === 2 || v === 3)
-        ) {
-          filterPriorities = parsed.priorities as Priority[];
-        }
-        if (
-          typeof parsed.state === "string" &&
-          (STATE_FILTERS as string[]).includes(parsed.state)
-        ) {
-          stateFilter = parsed.state as StateFilter;
-        }
-        if (typeof parsed.query === "string") {
-          filterQuery = parsed.query;
-        }
-      }
-    } catch {
-      // ignore corrupted/missing localStorage
-    }
     try {
       const v = localStorage.getItem(VIEW_STORAGE_KEY);
       if (v && (VIEWS as string[]).includes(v)) view = v as View;
@@ -392,7 +308,7 @@
       // task pool). Reset so the user starts the new project unfiltered.
       const currentRoot = writState.project?.root ?? null;
       if (previousRoot !== null && currentRoot !== null && currentRoot !== previousRoot) {
-        clearFilters();
+        filters.clear();
       }
     } catch (e) {
       // Unexpected IPC failure during folder-pick — surface transiently;
@@ -419,14 +335,7 @@
          the tree, not an inline banner. `writState.error` is now only the
          empty-state surface (handled in the !writState.project branch
          above). -->
-    <FilterBar
-      bind:tags={filterTags}
-      bind:priorities={filterPriorities}
-      bind:stateFilter
-      bind:query={filterQuery}
-      {visibleTagChips}
-      {filtersActive}
-    />
+    <FilterBar {visibleTagChips} />
 
     {#if view === "kanban"}
       <KanbanView
@@ -444,7 +353,7 @@
         columns={writState.columns}
         allTasks={sortedTasks}
         {visibleTasks}
-        {filtersActive}
+        filtersActive={filters.active}
         bind:activeColumnId
         {childrenByParent}
         {titleMatchesById}

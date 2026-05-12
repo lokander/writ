@@ -13,6 +13,7 @@
 import { vi, type Mock } from "vitest";
 
 import type { Column, ProjectInfo, Tag, Task, UpdateTaskResult } from "../../../shared/types";
+import { filters } from "./filters.svelte";
 import { writState } from "./state.svelte";
 
 export interface ApiStub {
@@ -79,4 +80,19 @@ export function seedWritState(seed: WritStateSeed = {}): void {
   writState.tags = seed.tags ?? [];
   writState.loading = false;
   writState.error = null;
+}
+
+/** Reset the filters singleton to its empty state. Needed in test files
+ *  that mount FilterBar (or anything that reads from the singleton),
+ *  because the module-level instance otherwise carries state across tests
+ *  within the same file. localStorage gets cleared too so a test setting
+ *  filters.query doesn't bleed into a sibling test via the hydration path
+ *  on a future construction (different test file). */
+export function resetFilters(): void {
+  filters.clear();
+  try {
+    localStorage.removeItem("writ:filter");
+  } catch {
+    // ignore — happy-dom always provides localStorage but defend anyway.
+  }
 }
