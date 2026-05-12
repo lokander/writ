@@ -18,6 +18,8 @@ const api = {
     setDisplayName: (name: string | null): Promise<ProjectInfo> =>
       ipcRenderer.invoke("project:setDisplayName", name),
     openFolder: (): Promise<OpenFolderResult> => ipcRenderer.invoke("project:openFolder"),
+    initRoot: (): Promise<string> => ipcRenderer.invoke("project:initRoot"),
+    init: (): Promise<OpenFolderResult> => ipcRenderer.invoke("project:init"),
   },
   columns: {
     list: (): Promise<Column[]> => ipcRenderer.invoke("columns:list"),

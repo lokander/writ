@@ -22,6 +22,8 @@ export interface ApiStub {
     current: Mock<() => Promise<ProjectInfo | null>>;
     setDisplayName: Mock<(name: string | null) => Promise<ProjectInfo>>;
     openFolder: Mock<() => Promise<{ canceled: true }>>;
+    initRoot: Mock<() => Promise<string>>;
+    init: Mock<() => Promise<{ canceled: true }>>;
   };
   columns: { list: Mock<() => Promise<Column[]>> };
   tasks: {
@@ -45,6 +47,8 @@ export function installApiStub(): ApiStub {
       current: vi.fn().mockResolvedValue(null),
       setDisplayName: vi.fn(),
       openFolder: vi.fn().mockResolvedValue({ canceled: true } as const),
+      initRoot: vi.fn().mockResolvedValue("~"),
+      init: vi.fn().mockResolvedValue({ canceled: true } as const),
     },
     columns: { list: vi.fn().mockResolvedValue([]) },
     tasks: {

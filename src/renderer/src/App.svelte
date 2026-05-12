@@ -17,7 +17,7 @@
   import { search } from "./lib/search.svelte";
   import { writState } from "./lib/state.svelte";
   import { toast } from "./lib/toast/toast.svelte";
-  import type { Priority, Task } from "../../shared/types";
+  import type { OpenFolderResult, Priority, Task } from "../../shared/types";
 
   const VIEW_STORAGE_KEY = "writ:view";
 
@@ -48,6 +48,11 @@
   // ConfirmDialog needs a render slot — closeGuard.hasDirty is what we
   // consult at request time.
   let confirmingClose = $state(false);
+
+  // Pretty-printed launch cwd (e.g. `~/projects/foo`), fetched lazily when
+  // the user clicks "Create writ project here…". Non-null while the create
+  // confirm dialog is open.
+  let confirmCreateAtCwd = $state<string | null>(null);
 
   // Right-click context menu. Holds the target task and the cursor position
   // captured at right-click time. Cleared on action / outside-click / Esc.
@@ -231,21 +236,20 @@
     await writState.deleteTask(id);
   }
 
-  // Switch to a different writ project via native folder picker. Cancel is a
-  // no-op. A folder without `.writ/writ.db` switches to the empty state with
-  // the error rendered inline (main has already cleared currentProject). On
-  // success, main has swapped currentProject; we refetch so the UI redraws.
-  async function openProjectFolder(): Promise<void> {
+  // Pick (open or init) a writ project via a native folder picker. Cancel is
+  // a no-op. On error, main has already cleared currentProject; surface the
+  // reason inline via the empty-state error slot. On success, refetch so the
+  // UI redraws against the new project.
+  async function pickProject(invoke: () => Promise<OpenFolderResult>): Promise<void> {
     try {
       const previousRoot = writState.project?.root ?? null;
-      const result = await window.api.project.openFolder();
+      const result = await invoke();
       if ("canceled" in result) return;
       if ("error" in result) {
         // Main skipped the broadcast on the error path so this silent refetch
         // doesn't race the error setter that follows it. Use the sticky
-        // empty-state surface (not a toast) — picking a non-writ folder
-        // leaves the app project-less, and the user needs the explanation
-        // visible until they pick another folder or run `writ init`.
+        // empty-state surface (not a toast) — leaving the app project-less
+        // means the user needs the explanation visible until they pick again.
         await writState.loadAll({ silent: true });
         writState.error = result.error;
         return;
@@ -264,6 +268,26 @@
       toast.show(e instanceof Error ? e.message : String(e), { variant: "error" });
     }
   }
+
+  function openProjectFolder(): Promise<void> {
+    return pickProject(() => window.api.project.openFolder());
+  }
+
+  async function createProjectFolder(): Promise<void> {
+    // Fetch the launch cwd from main before opening the confirm — the user
+    // sees the exact path where `.writ/` will land. If the IPC blows up,
+    // skip the confirm and surface a toast rather than silently failing.
+    try {
+      confirmCreateAtCwd = await window.api.project.initRoot();
+    } catch (e) {
+      toast.show(e instanceof Error ? e.message : String(e), { variant: "error" });
+    }
+  }
+
+  async function confirmCreateProject(): Promise<void> {
+    confirmCreateAtCwd = null;
+    await pickProject(() => window.api.project.init());
+  }
 </script>
 
 <main class="flex h-full flex-col bg-base-100 text-base-content">
@@ -280,7 +304,7 @@
   {/if}
 
   {#if writState.loading || !writState.project}
-    <EmptyState onOpenProject={openProjectFolder} />
+    <EmptyState onOpenProject={openProjectFolder} onCreateProject={createProjectFolder} />
   {:else}
     <!-- Mutation failures surface through <ToastStack /> at the bottom of
          the tree, not an inline banner. `writState.error` is now only the
@@ -350,6 +374,17 @@
       variant="danger"
       onConfirm={cmConfirmDelete}
       onCancel={() => (contextMenuDeleteFor = null)}
+    />
+  {/if}
+
+  {#if confirmCreateAtCwd}
+    <ConfirmDialog
+      title="Create writ project here?"
+      message={`This will create a new \`.writ/\` directory at ${confirmCreateAtCwd}.`}
+      confirmLabel="Create project"
+      cancelLabel="Cancel"
+      onConfirm={confirmCreateProject}
+      onCancel={() => (confirmCreateAtCwd = null)}
     />
   {/if}
 

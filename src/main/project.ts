@@ -14,6 +14,13 @@ let currentDb: SqliteDb | null = null;
 let currentProject: ProjectInfo | null = null;
 let dbWatcher: fs.FSWatcher | null = null;
 let watchDebounce: NodeJS.Timeout | null = null;
+// Path the user most recently tried to open as a project (via the
+// `project:openFolder` picker) that wasn't actually a writ project.
+// Drives "Create writ project here…": instead of always falling back to
+// process.cwd(), we use this folder so the affordance is contextual to
+// the error the user just saw on the empty state. Null when there's no
+// pending intent — fall back to process.cwd() then.
+let lastAttemptedRoot: string | null = null;
 // Bumped to "now + grace" each time the renderer's IPC handlers commit a
 // write, so the fs.watch event our own write trips doesn't re-broadcast and
 // cause the renderer to refetch on top of its own optimistic update. Pings
@@ -31,9 +38,17 @@ export function getCurrentProject(): ProjectInfo | null {
   return currentProject;
 }
 
+export function getLastAttemptedRoot(): string | null {
+  return lastAttemptedRoot;
+}
+
+export function setLastAttemptedRoot(path: string | null): void {
+  lastAttemptedRoot = path;
+}
+
 /** Replace a leading $HOME with `~` for nicer display. Falls back to the
  *  raw path when home isn't available or the path lives elsewhere. */
-function prettifyRoot(root: string): string {
+export function prettifyRoot(root: string): string {
   const home = homedir();
   if (!home) return root;
   if (root === home) return "~";

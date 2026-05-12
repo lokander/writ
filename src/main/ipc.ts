@@ -1,7 +1,7 @@
 import { BrowserWindow, dialog, ipcMain } from "electron";
 
 import { listColumns } from "../shared/domain/columns";
-import { findProjectRoot, setDisplayName } from "../shared/domain/project";
+import { findProjectRoot, initProject, setDisplayName } from "../shared/domain/project";
 import { listTags } from "../shared/domain/tags";
 import {
   createTask,
@@ -17,8 +17,11 @@ import {
   closeCurrentProject,
   getCurrentDb,
   getCurrentProject,
+  getLastAttemptedRoot,
   noteSelfWrite,
+  prettifyRoot,
   refreshCurrentProject,
+  setLastAttemptedRoot,
   switchProject,
 } from "./project";
 import { approveCloseAndClose } from "./window";
@@ -73,22 +76,56 @@ export function registerIpcHandlers(): void {
       // Explicit user pick that wasn't a writ project. Drop the current
       // project so the renderer's empty state surfaces the error as the
       // explanation for the switch — gives the user a clean place to either
-      // pick a different folder or (future task) init this one. Skip the
+      // pick a different folder or click "Create writ project here…" with
+      // this exact path pre-filled (see setLastAttemptedRoot). Skip the
       // broadcast: the caller pairs the IPC return with its own silent
       // loadAll + error set, so the message survives without a parallel
       // refetch racing to clear it.
       closeCurrentProject();
+      setLastAttemptedRoot(chosen);
       return {
-        error: `No writ project found at ${chosen}. Run \`writ init\` there first.`,
+        error: `No writ project found at ${chosen}.`,
       };
     }
     switchProject(root);
     broadcastProjectChanged();
+    setLastAttemptedRoot(null);
     const after = getCurrentProject();
     if (!after) {
       // switchProject failed silently — surface a generic error rather than
       // pretending the open succeeded.
       return { error: "Failed to open the selected project." };
+    }
+    return { project: after };
+  });
+
+  // The folder where "Create writ project here…" would init. Prefers a
+  // path the user just tried to open (and bounced off because it wasn't a
+  // writ project) so the affordance flows naturally from the error on
+  // screen; otherwise falls back to the app's launch cwd. The renderer
+  // surfaces this in a confirm dialog so the user sees exactly where
+  // `.writ/` is about to land.
+  ipcMain.handle("project:initRoot", () => prettifyRoot(getLastAttemptedRoot() ?? process.cwd()));
+
+  ipcMain.handle("project:init", (): OpenFolderResult => {
+    const root = getLastAttemptedRoot() ?? process.cwd();
+    // initProject is idempotent: a folder that already has `.writ/writ.db`
+    // returns `alreadyInitialized: true` and isn't re-seeded. So "Create
+    // here" on an existing project just opens it.
+    try {
+      initProject(root);
+    } catch (e) {
+      closeCurrentProject();
+      return {
+        error: `Failed to create writ project at ${root}: ${e instanceof Error ? e.message : String(e)}`,
+      };
+    }
+    switchProject(root);
+    broadcastProjectChanged();
+    setLastAttemptedRoot(null);
+    const after = getCurrentProject();
+    if (!after) {
+      return { error: "Failed to open the newly created project." };
     }
     return { project: after };
   });
