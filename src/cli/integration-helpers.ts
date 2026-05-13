@@ -20,7 +20,16 @@ export interface RunResult {
 
 export interface RunOpts {
   env?: Record<string, string>;
+  /** Hard cap per subprocess invocation. The child is SIGKILLed past this
+   *  and the call resolves with the captured stdout/stderr plus an explicit
+   *  timeout note appended to stderr. Default 20s — enough headroom for
+   *  Electron-as-Node + tsx startup under contention, but tight enough
+   *  that a genuinely-stuck subprocess fails the per-test budget loudly
+   *  with a localized message rather than vitest's opaque test timeout. */
+  timeoutMs?: number;
 }
+
+const DEFAULT_TIMEOUT_MS = 20_000;
 
 /** Run `fn` against a fresh tempdir; clean up regardless of outcome.
  *  Safe under `it.concurrent` because each call mints its own dir and
@@ -34,8 +43,9 @@ export async function withProject(fn: (dir: string) => Promise<void>): Promise<v
   }
 }
 
-/** Spawn `bin/writ-dev` and resolve once it exits. */
+/** Spawn `bin/writ-dev` and resolve once it exits or the timeout fires. */
 export function runWrit(cwd: string, args: string[], opts: RunOpts = {}): Promise<RunResult> {
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   return new Promise((resolveResult) => {
     const child = spawn(WRIT_DEV, args, {
       cwd,
@@ -43,6 +53,21 @@ export function runWrit(cwd: string, args: string[], opts: RunOpts = {}): Promis
     });
     let stdout = "";
     let stderr = "";
+    let settled = false;
+    const settle = (result: RunResult): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(killer);
+      resolveResult(result);
+    };
+    const killer = setTimeout(() => {
+      child.kill("SIGKILL");
+      settle({
+        stdout,
+        stderr: stderr + `\n[runWrit timed out after ${timeoutMs}ms — args: ${args.join(" ")}]`,
+        exitCode: -1,
+      });
+    }, timeoutMs);
     child.stdout.on("data", (chunk: Buffer) => {
       stdout += chunk.toString("utf8");
     });
@@ -50,10 +75,10 @@ export function runWrit(cwd: string, args: string[], opts: RunOpts = {}): Promis
       stderr += chunk.toString("utf8");
     });
     child.on("close", (code) => {
-      resolveResult({ stdout, stderr, exitCode: code ?? -1 });
+      settle({ stdout, stderr, exitCode: code ?? -1 });
     });
     child.on("error", (err) => {
-      resolveResult({ stdout, stderr: stderr + String(err), exitCode: -1 });
+      settle({ stdout, stderr: stderr + String(err), exitCode: -1 });
     });
   });
 }

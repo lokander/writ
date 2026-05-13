@@ -115,12 +115,24 @@ describe.concurrent("writ task view", () => {
   it("ambiguous suffix lists candidates", () =>
     withProject(async (dir) => {
       await init(dir);
-      await runWrit(dir, ["task", "add", "alpha"]);
-      await runWrit(dir, ["task", "add", "beta"]);
-      await runWrit(dir, ["task", "add", "gamma"]);
-      // A 1-char suffix is almost certain to match multiple ulids.
-      const r = await runWrit(dir, ["task", "view", "0"]);
+      // Force a deterministic suffix collision. ulids are random base32
+      // (32 symbols), so by birthday paradox two tasks share a ulid
+      // last-char after ~7 adds on average. Cap at 25 — failure to find
+      // a collision in 25 attempts is astronomically unlikely and itself
+      // an assertion failure rather than silent flake.
+      const lastChars = new Map<string, number>();
+      let ambiguousChar: string | null = null;
+      for (let i = 0; i < 25 && ambiguousChar === null; i++) {
+        const sfx = suffixFromCreated((await runWrit(dir, ["task", "add", `t${i}`])).stdout);
+        const c = sfx[sfx.length - 1]!;
+        const count = (lastChars.get(c) ?? 0) + 1;
+        lastChars.set(c, count);
+        if (count >= 2) ambiguousChar = c;
+      }
+      expect(ambiguousChar).not.toBeNull();
+
+      const r = await runWrit(dir, ["task", "view", ambiguousChar!]);
       expect(r.exitCode).toBe(1);
-      expect(r.stderr).toMatch(/matches \d+ tasks|No task matches/);
+      expect(r.stderr).toMatch(/matches \d+ tasks/);
     }));
 });
