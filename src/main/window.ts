@@ -50,13 +50,16 @@ export function createWindow(): void {
     minWidth: 1280,
     minHeight: 800,
     show: false,
-    autoHideMenuBar: true,
     ...(process.platform === "linux" ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
       sandbox: false,
     },
   });
+
+  // No application menu — drops the menu bar entirely so Alt can't toggle it
+  // back into view. (autoHideMenuBar only hides; the Alt-to-focus binding stays.)
+  mainWindow.setMenu(null);
 
   mainWindow.on("ready-to-show", () => {
     mainWindow?.show();
