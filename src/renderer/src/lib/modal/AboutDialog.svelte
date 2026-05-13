@@ -36,7 +36,7 @@
 <svelte:window onkeydown={onKeydown} />
 
 <Modal ariaLabelledBy="about-dialog-title" onBackdropClick={onClose}>
-  <div class="modal-box w-[28rem] max-w-none">
+  <div class="modal-box w-md max-w-none">
     <div class="mb-4 flex items-start justify-between gap-3">
       <div class="flex items-center gap-3">
         <HeadCircuitIcon size={36} weight="duotone" class="opacity-80" />
