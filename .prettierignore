@@ -4,3 +4,7 @@ pnpm-lock.yaml
 LICENSE.md
 tsconfig.json
 tsconfig.*.json
+# Per-user agent tooling (Claude Code local settings, transcript caches).
+# Globally gitignored but prettier doesn't read git ignore; list it here
+# so `npm run format:check` doesn't flag it.
+.claude/

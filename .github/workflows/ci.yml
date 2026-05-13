@@ -1,0 +1,41 @@
+name: CI
+
+# Runs on every push (so direct-to-main commits get fast feedback) and on
+# any PR targeting main. Tag-driven release builds live in release.yml;
+# this workflow is just the format / lint / typecheck / test gate.
+on:
+  push:
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Each check runs even if a previous one failed — the user gets the
+      # full picture in one workflow run instead of having to push, fix,
+      # push, fix. The job still fails overall if any step failed.
+      - name: Format
+        run: npm run format:check
+
+      - name: Lint
+        if: always()
+        run: npm run lint
+
+      - name: Typecheck
+        if: always()
+        run: npm run typecheck
+
+      - name: Test
+        if: always()
+        run: npm test

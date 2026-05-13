@@ -15,6 +15,7 @@
   "license": "MIT",
   "scripts": {
     "format": "prettier --plugin prettier-plugin-svelte --write .",
+    "format:check": "prettier --plugin prettier-plugin-svelte --check .",
     "lint": "eslint --cache .",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "svelte-check": "svelte-check --tsconfig ./tsconfig.web.json",
