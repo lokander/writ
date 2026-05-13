@@ -38,13 +38,15 @@ mac:
 dmg:
   artifactName: ${name}-${version}.${ext}
 linux:
-  # pacman ships the CLI on PATH via a post-install symlink. AppImage has
-  # no install hook, so a custom AppRun (injected via afterPack — see
-  # build/afterPack.cjs) delegates to the same bin/writ launcher; users
-  # put it on PATH by renaming/symlinking the .AppImage to `writ`.
-  # snap / deb are separate backlog tasks (F40AVM / KZDJSY).
+  # pacman / deb ship the CLI on PATH via a post-install symlink (see the
+  # shared scripts in build/maintainer). AppImage has no install hook, so
+  # a custom AppRun (injected via afterPack — see build/afterPack.cjs)
+  # delegates to the same bin/writ launcher; users put it on PATH by
+  # renaming/symlinking the .AppImage to `writ`. snap is a separate
+  # backlog task (F40AVM).
   target:
     - pacman
+    - deb
     - AppImage
   maintainer: "Fredrik Lokander <fredrik@lokander.no>"
   category: Utility
@@ -58,6 +60,31 @@ pacman:
   fpm:
     - "--after-install=build/maintainer/post-install.sh"
     - "--before-remove=build/maintainer/pre-remove.sh"
+deb:
+  # Same fpm passthrough as pacman; fpm wraps the same script bodies into
+  # Debian's `postinst` and `prerm` maintainer scripts instead of the
+  # pacman .INSTALL file. The install layout matches (`/opt/writ/`), so
+  # the /usr/bin/writ → /opt/writ/bin/writ symlink works identically.
+  fpm:
+    - "--after-install=build/maintainer/post-install.sh"
+    - "--before-remove=build/maintainer/pre-remove.sh"
+  # electron-builder's default deb depends list is the upstream Electron
+  # template, but Electron 39 also dynamically loads libasound at startup
+  # (audio) — without it the binary dies with `error while loading shared
+  # libraries: libasound.so.2`. Redeclaring the defaults here because
+  # this list replaces, not appends. `libasound2` on Debian trixie /
+  # Ubuntu 24.04+ is satisfied by the t64 transitional package.
+  depends:
+    - libgtk-3-0
+    - libnotify4
+    - libnss3
+    - libxss1
+    - libxtst6
+    - xdg-utils
+    - libatspi2.0-0
+    - libuuid1
+    - libsecret-1-0
+    - libasound2
 appImage:
   artifactName: ${name}-${version}.${ext}
 afterPack: build/afterPack.cjs

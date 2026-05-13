@@ -79,6 +79,7 @@ jobs:
           path: |
             dist/*.AppImage
             dist/*.pacman
+            dist/*.deb
             dist/*.dmg
             dist/*.exe
             dist/*.blockmap
