@@ -1,6 +1,6 @@
 {
   "name": "writ",
-  "version": "1.0.0",
+  "version": "0.0.0-dev",
   "description": "A repo-local agent-friendly glorified TODO app.",
   "main": "./out/main/index.js",
   "author": "Fredrik Messelt Lokander",

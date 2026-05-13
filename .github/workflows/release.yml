@@ -1,0 +1,100 @@
+name: Release
+
+# Tag-driven (push `v*`) or manual via the Actions UI for smoke-testing.
+# The version stamped into package.json (and thus into every artifact name
+# plus the renderer's AboutDialog) is derived from the tag — the committed
+# `version` in package.json is just a dev placeholder (`0.0.0-dev`).
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version stamped into the build (no `v` prefix). For dispatch testing only."
+        required: false
+        default: "0.0.0-dev"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            script: build:linux
+          - os: macos-latest
+            script: build:mac
+          - os: windows-latest
+            script: build:win
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Compute version
+        id: v
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="${{ inputs.version }}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Stamp version from tag
+        shell: bash
+        run: npm version "${{ steps.v.outputs.version }}" --no-git-tag-version --allow-same-version
+
+      - name: Build
+        shell: bash
+        run: npm run ${{ matrix.script }}
+        env:
+          # Skip macOS keychain probing; we ship unsigned dmg for now.
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-${{ matrix.os }}
+          # Each runner contributes only what its target produced; the
+          # globs that miss on a given OS are ignored. `if-no-files-found:
+          # error` still fires if the whole upload is empty, which would
+          # signal a silent build failure.
+          path: |
+            dist/*.AppImage
+            dist/*.pacman
+            dist/*.dmg
+            dist/*.exe
+            dist/*.blockmap
+            dist/latest*.yml
+          if-no-files-found: error
+
+  release:
+    # Only create a draft release for real tag pushes. workflow_dispatch
+    # runs just upload artifacts so you can grab them from the run summary
+    # to sanity-test before cutting a tag.
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: artifacts/*
