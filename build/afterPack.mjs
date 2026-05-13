@@ -8,21 +8,23 @@
 // appOutDir into the stage AFTER writing its generated AppRun, so a file
 // named AppRun in appOutDir overwrites the default — exactly what we want.
 //
-// Side effect: pacman builds also pick up the file at /opt/writ/AppRun.
-// It's dead weight there (never executed) but harmless and < 1KB.
+// Side effect: pacman / deb builds also pick up the file at
+// /opt/writ/AppRun. It's dead weight there (never executed) but harmless
+// and < 1KB.
 
-const fs = require("node:fs/promises");
-const path = require("node:path");
+import { chmod, copyFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const SOURCE = path.join(__dirname, "maintainer", "appimage-AppRun.sh");
+const SOURCE = join(dirname(fileURLToPath(import.meta.url)), "maintainer", "appimage-AppRun.sh");
 
-module.exports = async function afterPack(context) {
+export default async function afterPack(context) {
   const { electronPlatformName, appOutDir, targets } = context;
   if (electronPlatformName !== "linux") return;
   const wantsAppImage = (targets ?? []).some((target) => target.name?.toLowerCase() === "appimage");
   if (!wantsAppImage) return;
 
-  const dest = path.join(appOutDir, "AppRun");
-  await fs.copyFile(SOURCE, dest);
-  await fs.chmod(dest, 0o755);
-};
+  const dest = join(appOutDir, "AppRun");
+  await copyFile(SOURCE, dest);
+  await chmod(dest, 0o755);
+}

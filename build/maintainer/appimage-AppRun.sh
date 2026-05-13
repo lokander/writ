@@ -1,6 +1,6 @@
 #!/bin/sh
 # AppImage AppRun for writ. Injected into the AppImage staging dir by
-# build/afterPack.cjs, replacing electron-builder's default AppRun (which
+# build/afterPack.mjs, replacing electron-builder's default AppRun (which
 # would exec the Electron binary directly and bypass our CLI dispatch).
 #
 # Delegates to the same bin/writ launcher the pacman build ships at

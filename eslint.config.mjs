@@ -43,5 +43,15 @@ export default defineConfig(
       "svelte/no-unused-svelte-ignore": "off",
     },
   },
+  {
+    // Build / config scripts are plain JS — TypeScript-flavored rules
+    // that require type annotations (added by the @electron-toolkit/ts
+    // recommended preset above) don't apply.
+    files: ["build/**/*.{js,mjs,cjs}", "*.config.{js,mjs,cjs}"],
+    rules: {
+      "@typescript-eslint/explicit-function-return-type": "off",
+      "@typescript-eslint/no-require-imports": "off",
+    },
+  },
   eslintConfigPrettier,
 );

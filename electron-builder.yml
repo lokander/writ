@@ -40,7 +40,7 @@ dmg:
 linux:
   # pacman / deb ship the CLI on PATH via a post-install symlink (see the
   # shared scripts in build/maintainer). AppImage has no install hook, so
-  # a custom AppRun (injected via afterPack — see build/afterPack.cjs)
+  # a custom AppRun (injected via afterPack — see build/afterPack.mjs)
   # delegates to the same bin/writ launcher; users put it on PATH by
   # renaming/symlinking the .AppImage to `writ`. snap is a separate
   # backlog task (F40AVM).
@@ -87,7 +87,7 @@ deb:
     - libasound2
 appImage:
   artifactName: ${name}-${version}.${ext}
-afterPack: build/afterPack.cjs
+afterPack: build/afterPack.mjs
 npmRebuild: false
 publish:
   provider: generic
