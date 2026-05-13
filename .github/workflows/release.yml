@@ -47,6 +47,14 @@ jobs:
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
+      # bsdtar is what fpm shells out to when building the .pacman target;
+      # it's part of `libarchive` on Arch (preinstalled) but lives in the
+      # `libarchive-tools` apt package on Ubuntu and isn't on the runner
+      # by default. Without it the pacman build fails with exit code 127.
+      - name: Install Linux build deps
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y libarchive-tools
+
       - name: Install dependencies
         run: npm ci
 
