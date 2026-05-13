@@ -29,6 +29,24 @@ function spawnDesktopApp(root: string | null): void {
   // typed `writ` in — even if their shell cwd was a subdir.
   const cwd = root ?? process.cwd();
 
+  // AppImage case: the squashfs mount is owned by the AppImage runtime
+  // process tree, and tears down as soon as AppRun (our parent) exits. A
+  // detached spawn of process.execPath would lose its filesystem before
+  // Electron finishes booting. Re-exec the AppImage itself, detached, with
+  // a marker the AppRun checks (see build/maintainer/appimage-AppRun.sh)
+  // to skip the CLI and exec Electron directly — the new instance owns
+  // its own mount, which stays alive as long as the GUI does.
+  if (process.env.APPIMAGE && !process.env.WRIT_APPIMAGE_DESKTOP) {
+    const child = spawn(process.env.APPIMAGE, [], {
+      detached: true,
+      stdio: "ignore",
+      env: { ...env, WRIT_APPIMAGE_DESKTOP: "1" },
+      cwd,
+    });
+    child.unref();
+    return;
+  }
+
   // In dev, `process.execPath` is `<repo>/node_modules/electron/dist/electron`,
   // and Electron with no args has no app to run. Pointing it at the repo root
   // makes it pick up the built `out/main/index.js` from package.json's `main`

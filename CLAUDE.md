@@ -43,7 +43,7 @@ npm run sqlite:rebuild   # force-rebuild better-sqlite3 for Electron's ABI (rare
 npm run build            # typecheck → electron-vite build → build:cli (out/)
 npm run build:cli        # bundle the CLI via build/vite.cli.config.ts
 npm run build:unpack     # build + electron-builder --dir (no installer)
-npm run build:linux      # AppImage + snap + deb
+npm run build:linux      # pacman + AppImage (snap / deb tracked separately)
 npm run build:mac        # dmg
 npm run build:win        # nsis installer
 ```

@@ -84,7 +84,9 @@ The `writ` command users type is a thin shell launcher. It is _not_ the Electron
 - For `init` / `task` / `project` / `mcp` / `completion` subcommands: the launcher invokes `ELECTRON_RUN_AS_NODE=1 <electron-bin> <cli-bundle.js> "$@"`. The bundled CLI (`out/cli/index.js`, built by `build/vite.cli.config.ts`) handles dispatch via commander. Fast Node startup; no Chromium boot.
 - For bare `writ` (no subcommand): the same path through the bundled CLI, which then calls `launchDesktop()`. That helper first tries to send `{"type": "open", "root": <cwd>}` over the desktop socket — if a window is open, it focuses and (if cwd differs) switches projects. On socket failure, it spawns the Electron binary detached (no `ELECTRON_RUN_AS_NODE`) so the parent CLI can exit immediately.
 
-In the pacman-packaged build: the launcher is `/opt/writ/bin/writ` (a shell script shipped via electron-builder's `extraFiles`); the install hook symlinks `/usr/bin/writ → /opt/writ/bin/writ`. In dev: `bin/writ-dev` is the equivalent, running the CLI from source via tsx. Both paths end up at the same dispatch.
+In the pacman-packaged build: the launcher is `/opt/writ/bin/writ` (a shell script shipped via electron-builder's `extraFiles`); the install hook symlinks `/usr/bin/writ → /opt/writ/bin/writ`. In the AppImage build: a custom AppRun (injected by `build/afterPack.cjs`) delegates to the same `bin/writ` launcher inside the mounted squashfs at `$APPDIR/bin/writ`; users put it on PATH by renaming or symlinking the `.AppImage` as `writ` somewhere in PATH. In dev: `bin/writ-dev` is the equivalent, running the CLI from source via tsx. All three paths end up at the same dispatch.
+
+One AppImage-specific wrinkle: bare `writ` would normally spawn Electron detached and exit, but inside an AppImage that race tears down the fuse mount before Electron finishes booting. `spawnDesktopApp` (`src/cli/launch.ts`) detects `$APPIMAGE` and instead re-execs the `.AppImage` itself, detached, with `WRIT_APPIMAGE_DESKTOP=1`; the new instance's AppRun sees that env, skips the CLI bundle, and `exec`s Electron directly — its mount is held open by the GUI process itself.
 
 The Electron binary is an implementation detail; users don't invoke it directly. (How `code` works.)
 
@@ -95,7 +97,7 @@ The Electron binary is an implementation detail; users don't invoke it directly.
 - Data: SQLite via `better-sqlite3` (synchronous, fast, perfect for a desktop app's main process and a CLI).
 - MCP: `@modelcontextprotocol/sdk` over stdio.
 - CLI parser: `commander`.
-- Packaging: electron-builder + fpm. The pacman target is shipped (Linux on Arch); the GitHub Releases workflow, AUR submission, and other Linux formats (AppImage / snap / deb) plus macOS / Windows are tracked as follow-up tasks. The CLI is bundled into `out/cli/index.js` via a sibling Vite config (`build/vite.cli.config.ts`) and shipped inside the asar; the launcher shell script (`build/writ-launcher.sh`) lands at `<install-dir>/bin/writ` via electron-builder's `extraFiles`.
+- Packaging: electron-builder + fpm. Shipped targets: `pacman` (CLI on PATH via post-install symlink to `/usr/bin/writ`) and `AppImage` (CLI on PATH by renaming/symlinking the `.AppImage` as `writ`; a custom AppRun from `build/afterPack.cjs` routes invocations through the same launcher). The GitHub Releases workflow, AUR submission, and the remaining Linux formats (snap / deb) plus macOS / Windows are tracked as follow-up tasks. The CLI is bundled into `out/cli/index.js` via a sibling Vite config (`build/vite.cli.config.ts`) and shipped inside the asar; the launcher shell script (`build/writ-launcher.sh`) lands at `<install-dir>/bin/writ` via electron-builder's `extraFiles`.
 
 The current CLI and MCP surfaces are the live source of truth — see the [README](./README.md), `writ --help`, and the registered `mcp__writ__*` tools rather than restating them here. Active work is tracked in writ itself (`mcp__writ__list_tasks`).
 

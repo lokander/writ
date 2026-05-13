@@ -38,10 +38,14 @@ mac:
 dmg:
   artifactName: ${name}-${version}.${ext}
 linux:
-  # v1 ships pacman only (Arch). AppImage / snap / deb are separate backlog
-  # tasks (55JQQH / F40AVM / KZDJSY) with their own CLI-on-PATH wiring.
+  # pacman ships the CLI on PATH via a post-install symlink. AppImage has
+  # no install hook, so a custom AppRun (injected via afterPack — see
+  # build/afterPack.cjs) delegates to the same bin/writ launcher; users
+  # put it on PATH by renaming/symlinking the .AppImage to `writ`.
+  # snap / deb are separate backlog tasks (F40AVM / KZDJSY).
   target:
     - pacman
+    - AppImage
   maintainer: "Fredrik Lokander <fredrik@lokander.no>"
   category: Utility
   executableName: writ
@@ -56,6 +60,7 @@ pacman:
     - "--before-remove=build/maintainer/pre-remove.sh"
 appImage:
   artifactName: ${name}-${version}.${ext}
+afterPack: build/afterPack.cjs
 npmRebuild: false
 publish:
   provider: generic
