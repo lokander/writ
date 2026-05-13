@@ -1,10 +1,12 @@
 name: CI
 
-# Runs on every push (so direct-to-main commits get fast feedback) and on
-# any PR targeting main. Tag-driven release builds live in release.yml;
-# this workflow is just the format / lint / typecheck / test gate.
+# Runs on every branch push (so direct-to-main commits get fast feedback)
+# and on any PR targeting main. Tag pushes are excluded — release.yml
+# handles those, and re-running the checks against the tagged commit
+# would just duplicate the work that already ran on the underlying push.
 on:
   push:
+    branches: ["**"]
   pull_request:
     branches: [main]
 
